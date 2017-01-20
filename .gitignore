@@ -12,9 +12,11 @@ grasp/
 images/
 opencv/
 convnet/
+backup/
 decaf/
 submission/
 cfg/
+build/
 darknet
 .fuse*
 
