@@ -13,8 +13,8 @@
 #
 # 
 
-GPU=1
-CUDNN=1
+GPU=0
+CUDNN=0
 OPENCV=1
 DEBUG=1
 

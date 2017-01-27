@@ -93,31 +93,30 @@ function(detect_cuDNN)
 endfunction()
 
 # CUDA
-FIND_PACKAGE(CUDA)
-if (CUDA_FOUND)
+if (USE_GPU)
+    FIND_PACKAGE(CUDA)
+    if (CUDA_FOUND)
 
-    include_directories(SYSTEM ${CUDA_INCLUDE_DIRS})
-    list(APPEND LIBRARIES ${CUDA_LIBRARIES} ${CUDA_CUBLAS_LIBRARIES} ${CUDA_curand_LIBRARY} ${CUDA_cusparse_LIBRARY} ${CUDA_cudnn_LIBRARY} )
-    list(APPEND CUDA_NVCC_FLAGS "-arch=sm_35;-O2;-Xcompiler;-fPIC;")
-    set(CUDA_PROPAGATE_HOST_FLAGS OFF)
-    add_definitions(-DGPU)
-    cuda_include_directories(src)
+        include_directories(SYSTEM ${CUDA_INCLUDE_DIRS})
+        list(APPEND LIBRARIES ${CUDA_LIBRARIES} ${CUDA_CUBLAS_LIBRARIES} ${CUDA_curand_LIBRARY} ${CUDA_cusparse_LIBRARY} ${CUDA_cudnn_LIBRARY} )
+        list(APPEND CUDA_NVCC_FLAGS "-arch=sm_35;-O2;-Xcompiler;-fPIC;")
+        set(CUDA_PROPAGATE_HOST_FLAGS OFF)
+        add_definitions(-DGPU)
+        cuda_include_directories(src)
 
-    # cudnn detection
-    if(USE_CUDNN)
-        detect_cuDNN()
-        if(HAVE_CUDNN)
-            add_definitions(-DCUDNN)
-            include_directories(SYSTEM ${CUDNN_INCLUDE})
-            list(APPEND LIBRARIES ${CUDNN_LIBRARY})
+        # cudnn detection
+        if(USE_CUDNN)
+            detect_cuDNN()
+            if(HAVE_CUDNN)
+                add_definitions(-DCUDNN)
+                include_directories(SYSTEM ${CUDNN_INCLUDE})
+                list(APPEND LIBRARIES ${CUDNN_LIBRARY})
+            endif()
         endif()
+    else()
+        list(APPEND LIBRARIES "m")
     endif()
-
-
-else()
-    list(APPEND LIBRARIES "m")
 endif()
-
 
 
 
