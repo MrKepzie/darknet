@@ -69,7 +69,7 @@ void backward_softmax_layer(const softmax_layer l, network_state state)
     }
 }
 
-#ifdef GPU
+#if 0
 
 void pull_softmax_layer_output(const softmax_layer layer)
 {

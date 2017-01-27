@@ -721,12 +721,18 @@ list *read_cfg(char *filename)
             case ';':
                 free(line);
                 break;
-            default:
+            default: {
+                if (!current) {
+                    fprintf(stderr, "Config file error line %d, could parse: %s\n", nu, line);
+                    free(line);
+                    error(line);
+                    break;
+                }
                 if(!read_option(line, current->options)){
                     fprintf(stderr, "Config file error line %d, could parse: %s\n", nu, line);
                     free(line);
                 }
-                break;
+            }   break;
         }
     }
     fclose(file);

@@ -123,7 +123,7 @@ endif()
 
 # OpenCV
 FIND_PACKAGE(OpenCV REQUIRED)
-
+add_definitions(-DOPENCV)
 
 include_directories(SYSTEM ${OpenCV_INCLUDE_DIR})
 
@@ -139,6 +139,8 @@ LIST(REMOVE_ITEM SRC_FILES "${PROJECT_SOURCE_DIR}/src/server.c")
 LIST(REMOVE_ITEM SRC_FILES "${PROJECT_SOURCE_DIR}/src/old.c")
 #LIST(REMOVE_ITEM SRC_FILES "${PROJECT_SOURCE_DIR}/src/cpu_gemm.c")
 #LIST(REMOVE_ITEM SRC_FILES "${PROJECT_SOURCE_DIR}/src/darknet.c")
+
+set_source_files_properties(${SRC_FILES} PROPERTIES LANGUAGE CXX )
 
 if (CUDA_FOUND)
 
