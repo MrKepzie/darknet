@@ -96,7 +96,7 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
 {
     //skip = frame_skip;
     image **alphabet = load_alphabet();
-    int delay = frame_skip;
+    int delay = 0;
     demo_names = names;
     demo_alphabet = alphabet;
     demo_classes = classes;
@@ -221,3 +221,96 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
 }
 #endif
 
+void writeout(char *cfgfile, char *weightfile, float thresh, int cam_index, const char *filename, char **names, int classes, const char *outputFilenamePrefix, float hier_thresh)
+{
+    //skip = frame_skip;
+    image **alphabet = load_alphabet();
+    int delay = 1;
+    demo_names = names;
+    demo_alphabet = alphabet;
+    demo_classes = classes;
+    demo_thresh = thresh;
+    demo_hier_thresh = hier_thresh;
+    printf("writeout\n");
+    net = parse_network_cfg(cfgfile);
+    if(weightfile){
+        load_weights(&net, weightfile);
+    }
+    set_batch_network(&net, 1);
+
+    srand(2222222);
+
+    printf("video file: %s\n", filename);
+    cap = cvCaptureFromFile(filename);
+
+
+    if(!cap) error("Couldn't read video.\n");
+    
+    layer l = net.layers[net.n-1];
+    int j;
+
+    avg = (float *) calloc(l.outputs, sizeof(float));
+    for(j = 0; j < FRAMES; ++j) predictions[j] = (float *) calloc(l.outputs, sizeof(float));
+    for(j = 0; j < FRAMES; ++j) images[j] = make_image(1,1,3);
+
+    boxes = (box *)calloc(l.w*l.h*l.n, sizeof(box));
+    probs = (float **)calloc(l.w*l.h*l.n, sizeof(float *));
+    for(j = 0; j < l.w*l.h*l.n; ++j) probs[j] = (float *)calloc(l.classes, sizeof(float));
+
+    pthread_t fetch_thread;
+    pthread_t detect_thread;
+
+    fetch_in_thread(0);
+    det = in;
+    det_s = in_s;
+
+    fetch_in_thread(0);
+    detect_in_thread(0);
+    disp = det;
+    det = in;
+    det_s = in_s;
+
+    for(j = 0; j < FRAMES/2; ++j){
+        fetch_in_thread(0);
+        detect_in_thread(0);
+        disp = det;
+        det = in;
+        det_s = in_s;
+    }
+
+    int count = 0;
+
+    double before = get_wall_time();
+
+    while(1){
+        ++count;
+        if(pthread_create(&fetch_thread, 0, fetch_in_thread, 0)) error("Thread creation failed");
+        if(pthread_create(&detect_thread, 0, detect_in_thread, 0)) error("Thread creation failed");
+
+        char buff[512];
+        sprintf(buff, "%s_%04d", outputFilenamePrefix, count);
+        save_image(disp, buff);
+
+
+        pthread_join(fetch_thread, 0);
+        pthread_join(detect_thread, 0);
+
+        if(delay == 0){
+            free_image(disp);
+            disp  = det;
+        }
+        det   = in;
+        det_s = in_s;
+
+        --delay;
+        if(delay < 0){
+            delay = 0;
+
+            double after = get_wall_time();
+            float curr = 1./(after - before);
+            fps = curr;
+            before = after;
+        }
+    }
+
+}
