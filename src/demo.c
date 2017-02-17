@@ -9,6 +9,7 @@
 #include "demo.h"
 #include <sys/time.h>
 
+
 #define FRAMES 3
 
 #ifdef OPENCV
@@ -220,6 +221,7 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
     fprintf(stderr, "Demo needs OpenCV for webcam images.\n");
 }
 #endif
+
 
 void writeout(char *cfgfile, char *weightfile, float thresh, int cam_index, const char *filename, char **names, int classes, const char *outputFilenamePrefix, float hier_thresh)
 {

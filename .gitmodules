@@ -1,0 +1,3 @@
+[submodule "SequenceParsing"]
+	path = SequenceParsing
+	url = https://github.com/MrKepzie/SequenceParsing

@@ -129,6 +129,9 @@ include_directories(SYSTEM ${OpenCV_INCLUDE_DIR})
 # Add sources
 
 include_directories(src)
+include_directories(SequenceParsing)
+include_directories(SequenceParsing/tinydir)
+include_directories(Serialization)
 
 set(SRC_DIR src)
 
@@ -137,7 +140,11 @@ FILE(GLOB SRC_FILES ${PROJECT_SOURCE_DIR}/${SRC_DIR}/*.c)
 LIST(REMOVE_ITEM SRC_FILES "${PROJECT_SOURCE_DIR}/src/server.c")
 LIST(REMOVE_ITEM SRC_FILES "${PROJECT_SOURCE_DIR}/src/old.c")
 #LIST(REMOVE_ITEM SRC_FILES "${PROJECT_SOURCE_DIR}/src/cpu_gemm.c")
-#LIST(REMOVE_ITEM SRC_FILES "${PROJECT_SOURCE_DIR}/src/darknet.c")
+LIST(REMOVE_ITEM SRC_FILES "${PROJECT_SOURCE_DIR}/src/darknet.c")
+LIST(REMOVE_ITEM SRC_FILES "${PROJECT_SOURCE_DIR}/src/demo.c")
+LIST(REMOVE_ITEM SRC_FILES "${PROJECT_SOURCE_DIR}/src/yolo.c")
+
+set(SRC_FILES "${SRC_FILES};${PROJECT_SOURCE_DIR}/SequenceParsing/SequenceParsing.cpp;${PROJECT_SOURCE_DIR}/SequenceParsing/SequenceParsing.h;${PROJECT_SOURCE_DIR}/SequenceParsing/tinydir/tinydir.h")
 
 set_source_files_properties(${SRC_FILES} PROPERTIES LANGUAGE CXX )
 
@@ -162,8 +169,19 @@ if (CUDA_FOUND)
 
 endif()
 
+# build Serialization lib
+add_subdirectory(Serialization)
 
-add_library(dnl SHARED ${SRC_FILES} ${HEADERS} ${CU_SRC_FILES} ${cuda_objs})
-target_link_libraries(dnl ${LIBRARIES} ${OpenCV_LIBS})
-add_executable(darknet ${SRC_DIR}/darknet.c)
-target_link_libraries(darknet ${LIBRARIES} dnl)
+
+add_library(libdarknet STATIC ${SRC_FILES} ${HEADERS} ${CU_SRC_FILES} ${cuda_objs})
+target_link_libraries(libdarknet ${LIBRARIES} ${OpenCV_LIBS})
+
+add_executable(detector ${SRC_DIR}/detectSequence.c)
+
+target_link_libraries(detector ${LIBRARIES} libdarknet)
+target_link_libraries(detector ${LIBRARIES} autocam-serialization)
+add_definitions("-DYAML=YAML_AUTOCAM")
+
+
+
+
