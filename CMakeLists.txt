@@ -132,6 +132,7 @@ include_directories(src)
 include_directories(SequenceParsing)
 include_directories(SequenceParsing/tinydir)
 include_directories(Serialization)
+include_directories(Serialization/yaml-cpp/include)
 
 set(SRC_DIR src)
 

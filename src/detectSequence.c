@@ -14,11 +14,12 @@
 #include <sstream>
 #include <fstream>
 #include <cmath>
+#include <vector>
 #include "DetectionsSerialization.h"
 #include "SerializationIO.h"
 #include "FStreamsSupport.h"
 
-using namespace std;
+using std::string;
 
 struct FetcherThreadArgs
 {
@@ -52,8 +53,8 @@ struct DetectThreadArgs
     box *boxes;
     float thresh;
     float hierThresh;
-    vector<string>* names;
-    vector<string>* allowedClasses;
+    std::vector<string>* names;
+    std::vector<string>* allowedClasses;
     string *outputFilename;
     SERIALIZATION_NAMESPACE::SequenceSerialization* outSeq;
 
@@ -167,9 +168,9 @@ void *detect_in_thread(void *ptr)
     return 0;
 } // detect_in_thread
 
-static list<string>::iterator hasToken(list<string> &localArgs, const string& token)
+static std::list<string>::iterator hasToken(std::list<string> &localArgs, const string& token)
 {
-    for (list<string>::iterator it = localArgs.begin(); it!=localArgs.end(); ++it) {
+    for (std::list<string>::iterator it = localArgs.begin(); it!=localArgs.end(); ++it) {
         if (*it == token) {
             return it;
         }
@@ -186,18 +187,18 @@ void split(const std::string &s, char delim, std::vector<std::string>* result) {
     }
 }
 
-static void parseArguments(const list<string>& args,
+static void parseArguments(const std::list<string>& args,
                            SequenceParsing::SequenceFromPattern* inputSequence,
                            int* firstFrame, int* lastFrame,
                            string* cfgFilename,
                            string* weightFilename,
                            float* thresh,
-                           vector<string>* names,
+                           std::vector<string>* names,
                            string* outputFilename)
 {
-    list<string> localArgs = args;
+    std::list<string> localArgs = args;
     {
-        list<string>::iterator foundInput = hasToken(localArgs, "-i");
+        std::list<string>::iterator foundInput = hasToken(localArgs, "-i");
         if (foundInput == localArgs.end()) {
             throw std::invalid_argument("An input file must be specified with the -i switch.");
         }
@@ -210,7 +211,7 @@ static void parseArguments(const list<string>& args,
         }
     }
     {
-        list<string>::iterator foundInput = hasToken(localArgs, "--range");
+        std::list<string>::iterator foundInput = hasToken(localArgs, "--range");
         if (foundInput == localArgs.end()) {
             *firstFrame = inputSequence->begin()->first;
             *lastFrame = inputSequence->rbegin()->first;
@@ -219,17 +220,17 @@ static void parseArguments(const list<string>& args,
             if ( foundInput == localArgs.end() ) {
                 throw std::invalid_argument("--range switch without a frame range");
             } else {
-                vector<string> rangeVec;
+                std::vector<string> rangeVec;
                 split(*foundInput, '-', &rangeVec);
                 if (rangeVec.size() != 2) {
                     throw std::invalid_argument("Frame range must be in the form firstFrame-lastFrame");
                 }
                 {
-                    stringstream ss(rangeVec[0]);
+                    std::stringstream ss(rangeVec[0]);
                     ss >> *firstFrame;
                 }
                 {
-                    stringstream ss(rangeVec[1]);
+                    std::stringstream ss(rangeVec[1]);
                     ss >> *lastFrame;
                 }
                 if (*firstFrame < inputSequence->begin()->first || *lastFrame > inputSequence->rbegin()->first) {
@@ -242,7 +243,7 @@ static void parseArguments(const list<string>& args,
         
     }
     {
-        list<string>::iterator foundInput = hasToken(localArgs, "-o");
+        std::list<string>::iterator foundInput = hasToken(localArgs, "-o");
         if (foundInput == localArgs.end()) {
             throw std::invalid_argument("An output file must be specified with the -o switch.");
         }
@@ -255,7 +256,7 @@ static void parseArguments(const list<string>& args,
         }
     }
     {
-        list<string>::iterator foundInput = hasToken(localArgs, "--cfg");
+        std::list<string>::iterator foundInput = hasToken(localArgs, "--cfg");
         if (foundInput == localArgs.end()) {
             throw std::invalid_argument("A config file must be specified with the --cfg switch.");
         }
@@ -268,7 +269,7 @@ static void parseArguments(const list<string>& args,
         }
     }
     {
-        list<string>::iterator foundInput = hasToken(localArgs, "--weights");
+        std::list<string>::iterator foundInput = hasToken(localArgs, "--weights");
         if (foundInput == localArgs.end()) {
             throw std::invalid_argument("A config file must be specified with the --weights switch.");
         }
@@ -281,7 +282,7 @@ static void parseArguments(const list<string>& args,
         }
     }
     {
-        list<string>::iterator foundInput = hasToken(localArgs, "--names");
+        std::list<string>::iterator foundInput = hasToken(localArgs, "--names");
         std::string namesFile;
         if (foundInput == localArgs.end()) {
             printf("--names switch not specified, using data/names.list instead");
@@ -296,7 +297,7 @@ static void parseArguments(const list<string>& args,
             }
         }
         {
-            ifstream ifile;
+            std::ifstream ifile;
             ifile.open(namesFile);
             if (!ifile) {
                 fprintf(stderr, "Couldn't open file: %s\n", namesFile.c_str());
@@ -311,7 +312,7 @@ static void parseArguments(const list<string>& args,
     }
 
     {
-        list<string>::iterator foundInput = hasToken(localArgs, "--thresh");
+        std::list<string>::iterator foundInput = hasToken(localArgs, "--thresh");
         if (foundInput == localArgs.end()) {
             *thresh = 0.25;
             printf("--thresh not specified, using %f", *thresh);
@@ -333,7 +334,7 @@ static void parseArguments(const list<string>& args,
 
 int renderImageSequence_main(int argc, char** argv)
 {
-    list<string> arguments;
+    std::list<string> arguments;
     for (int i = 0; i < argc; ++i) {
         arguments.push_back(string(argv[i]));
     }
@@ -342,10 +343,10 @@ int renderImageSequence_main(int argc, char** argv)
     int firstFrame, lastFrame;
     string cfgFilename, weightFilename;
     float thresh;
-    vector<string> names;
+    std::vector<string> names;
     string outputFile;
     float hier_thresh = .5;
-    vector<string> allowedNames;
+    std::vector<string> allowedNames;
     allowedNames.push_back("person");
     parseArguments(arguments, &inputFiles, &firstFrame, &lastFrame, &cfgFilename, &weightFilename, &thresh, &names, &outputFile);
 
