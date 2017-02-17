@@ -97,7 +97,7 @@ void *detect_in_thread(void *ptr)
 
     free_image(args->inputImage);
 
-    SERIALIZATION_NAMESPACE::FrameSerialization& frameSerialization = args->outSeq->frames[args->frameNumber];
+    SERIALIZATION_NAMESPACE::FrameSerialization frameSerialization;
 
     for (int i = 0; i < gridSize; ++i) {
         int class1 = max_index(args->probs[i], nClasses);
@@ -111,7 +111,7 @@ void *detect_in_thread(void *ptr)
         bool keepDetection = false;
         for (std::size_t c = 0; c < args->allowedClasses->size(); ++c) {
             if ((*args->allowedClasses)[c] == label) {
-                keepDetection = false;
+                keepDetection = true;
                 break;
             }
         }
@@ -145,6 +145,8 @@ void *detect_in_thread(void *ptr)
     if (frameSerialization.detections.empty()) {
         return 0;
     }
+
+    args->outSeq->frames.insert(std::make_pair(args->frameNumber, frameSerialization));
 
     // Write the results file for each frame in case it crash so nothing is lost
     FStreamsSupport::ofstream ofile;
@@ -417,6 +419,9 @@ int renderImageSequence_main(int argc, char** argv)
         detectArgs.inputImage = fetchArgs.inputImage;
         detectArgs.inputImageScaled = fetchArgs.inputImageScaled;
         detect_in_thread(&detectArgs);
+        if (!detectArgs.ok) {
+            return 1;
+        }
 
         ++curFrame_i;
     }
