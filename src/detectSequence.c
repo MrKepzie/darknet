@@ -128,9 +128,9 @@ void *detect_in_thread(void *ptr)
         const box& b = args->boxes[i];
 
         detection.x1 = (b.x-b.w/2.) * imgWidth;
-        detection.y1 = (b.y+b.h/2.) * imgHeight;
+        detection.y1 = (b.y-b.h/2.) * imgHeight;
         detection.x2 = (b.x+b.w/2.) * imgWidth + 1;
-        detection.y2 = (b.y-b.h/2.) * imgHeight + 1;
+        detection.y2 = (b.y+b.h/2.) * imgHeight + 1;
 
         // Clamp
         detection.x1 = std::max(0.,std::min((double)imgWidth, detection.x1));
