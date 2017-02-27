@@ -165,7 +165,7 @@ bool compareDetectionsAtFrame(int frameNumber,
             if (!gtRect.intersect(detectionRect, &intersection)) {
                 continue;
             }
-            double unionArea = detectionRect.area() + gtRect.area() - intersection.area();
+            double unionArea = detectionRect.area() + gtArea - intersection.area();
             double intersectionArea = intersection.area();
             double score = unionArea > 0 ? intersectionArea / unionArea : 0;
             if (score > 0) {
@@ -220,12 +220,14 @@ void drawBbox(image& im, const RectD& bbox, const std::string& label, image **al
     if(top > im.h) top = im.h;
     if(bot < 0) bot = 0;
 
-    draw_box_width(im, left, bot, right, top, width, red, green, blue);
-    if (alphabet && !label.empty()) {
+    int drawBottom = im.h - top;
+    int drawTop = im.h - bot;
+    draw_box_width(im, left, drawBottom, right, drawTop, width, red, green, blue);
+    /*if (alphabet && !label.empty()) {
         image labelImg = get_label(alphabet, const_cast<char*>(label.c_str()), (im.h*.03)/10);
         int labelY = color_i == 0 ? bot + width : top + width;
         draw_label(im, labelY, left, labelImg, rgb);
-    }
+    }*/
 
 }
 
@@ -251,6 +253,7 @@ void writeImage(const std::string& inputFilename,
         }
     }
     save_image(inputImage, outputFilename.c_str());
+    free_image(inputImage);
 }
 
 static std::list<string>::iterator hasToken(std::list<string> &localArgs, const string& token)
