@@ -185,6 +185,12 @@ add_executable(detector ${SRC_DIR}/detectSequence.c)
 
 target_link_libraries(detector ${LIBRARIES} libdarknet)
 target_link_libraries(detector ${LIBRARIES} autocam-serialization)
+
+add_executable(compareDetections ${SRC_DIR}/compareDetections.c)
+
+target_link_libraries(compareDetections ${LIBRARIES} libdarknet)
+target_link_libraries(compareDetections ${LIBRARIES} autocam-serialization)
+
 add_definitions("-DYAML=YAML_AUTOCAM")
 
 add_executable(darknet "${YOLO_SRC_FILES}")
