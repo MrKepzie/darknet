@@ -158,7 +158,7 @@ bool compareDetectionsAtFrame(int frameNumber,
 
             // Since the ground-truth only contains a square around the head, just extract
             // the square portion on top of the detection
-            detectionRect.y1 = std::max(detectionRect.y1, detectionRect.y2 - detection.width());
+            detectionRect.y1 = std::max(detectionRect.y1, detectionRect.y2 - detectionRect.width());
 
             allDetections->push_back(detectionRect);
             RectD intersection;
