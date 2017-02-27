@@ -156,20 +156,26 @@ bool compareDetectionsAtFrame(int frameNumber,
             detectionRect.x2 = it->x2;
             detectionRect.y2 = it->y2;
 
+            // Since the ground-truth only contains a square around the head, just extract
+            // the square portion on top of the detection
+            detectionRect.y1 = std::max(detectionRect.y1, detectionRect.y2 - detection.width());
+
             allDetections->push_back(detectionRect);
             RectD intersection;
             if (!gtRect.intersect(detectionRect, &intersection)) {
                 continue;
             }
+            double unionArea = detectionRect.area() + gtRect.area() - intersection.area();
             double intersectionArea = intersection.area();
-            if (intersectionArea >= gtArea * 0.3) {
+            double score = unionArea > 0 ? intersectionArea / unionArea : 0;
+            if (score > 0) {
 
                 if (bestDetectionRect.isNull()) {
                     bestDetectionRect = detectionRect;
                 } else {
-                    if (intersectionArea > bestDetectionScore) {
+                    if (unionArea > bestDetectionScore) {
                         bestDetectionRect = detectionRect;
-                        bestDetectionScore = intersectionArea;
+                        bestDetectionScore = unionArea;
                     }
                 }
             }
