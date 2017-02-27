@@ -147,6 +147,7 @@ LIST(REMOVE_ITEM SRC_FILES "${PROJECT_SOURCE_DIR}/src/yolo.c")
 
 set(YOLO_SRC_FILES "${SRC_FILES};${PROJECT_SOURCE_DIR}/src/darknet.c;${PROJECT_SOURCE_DIR}/src/demo.c;${PROJECT_SOURCE_DIR}/src/yolo.c")
 LIST(REMOVE_ITEM YOLO_SRC_FILES "${PROJECT_SOURCE_DIR}/src/detectSequence.c")
+LIST(REMOVE_ITEM YOLO_SRC_FILES "${PROJECT_SOURCE_DIR}/src/compareDetections.c")
 
 set(SRC_FILES "${SRC_FILES};${PROJECT_SOURCE_DIR}/SequenceParsing/SequenceParsing.cpp;${PROJECT_SOURCE_DIR}/SequenceParsing/SequenceParsing.h;${PROJECT_SOURCE_DIR}/SequenceParsing/tinydir/tinydir.h")
 

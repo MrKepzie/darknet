@@ -14,6 +14,7 @@
 #include <sstream>
 #include <fstream>
 #include <cmath>
+#include <iostream>
 #include <vector>
 #include "DetectionsSerialization.h"
 #include "SerializationIO.h"
@@ -419,6 +420,7 @@ int renderImageSequence_main(int argc, char** argv)
         detectArgs.frameNumber = frameNumber;
         detectArgs.inputImage = fetchArgs.inputImage;
         detectArgs.inputImageScaled = fetchArgs.inputImageScaled;
+	std::cout << "Running detector on frame " << frameNumber << std::endl;
         detect_in_thread(&detectArgs);
         if (!detectArgs.ok) {
             return 1;

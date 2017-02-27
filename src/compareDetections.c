@@ -119,9 +119,9 @@ bool compareDetectionsAtFrame(int frameNumber,
         for (std::list<SERIALIZATION_NAMESPACE::DetectionSerialization>::const_iterator it = foundFrameDet1->second.detections.begin() ; it != foundFrameDet1->second.detections.end(); ++it) {
             RectD detectionRect;
             detectionRect.x1 = it->x1;
-            detectionRect.y2 = it->y1;
+            detectionRect.y1 = it->y1;
             detectionRect.x2 = it->x2;
-            detectionRect.y1 = it->y2;
+            detectionRect.y2 = it->y2;
 
             RectD intersection;
             if (!gtRect.intersect(detectionRect, &intersection)) {
@@ -176,9 +176,9 @@ void drawBbox(image& im, const RectD& bbox, const std::string& label, image **al
     int bot   = (int)bbox.y1;
 
     if(left < 0) left = 0;
-    if(right > im.w-1) right = im.w-1;
-    if(top < 0) top = 0;
-    if(bot > im.h-1) bot = im.h-1;
+    if(right > im.w) right = im.w;
+    if(top > im.h) top = im.h;
+    if(bot < 0) bot = 0;
 
     draw_box_width(im, left, top, right, bot, width, red, green, blue);
     if (alphabet) {
@@ -415,7 +415,11 @@ int renderImageSequence_main(int argc, char** argv)
     SERIALIZATION_NAMESPACE::SequenceSerialization detection1, detection2;
     string outputPattern;
     string label;
-    parseArguments(arguments, &inputFiles, &firstFrame, &lastFrame, &offset1, &offset2, &gtScaleX, &gtScaleY, &detection1, &detection2, &outputPattern, &label);
+	try {
+    	parseArguments(arguments, &inputFiles, &firstFrame, &lastFrame, &offset1, &offset2, &gtScaleX, &gtScaleY, &detection1, &detection2, &outputPattern, &label);
+	} catch (const std::exception& e) {
+		std::cerr << e.what() << std::endl;
+	}
 
     // vector of pair<filename, framenumber> >
     std::vector<std::pair<std::string,int> > inputFilesInOrder;
