@@ -28,6 +28,15 @@ public:
 
     double x1,y1,x2,y2;
 
+    RectD()
+    : x1(0)
+    , y1(0)
+    , x2(0)
+    , y2(0)
+    {
+
+    }
+
     bool isNull() const
     {
         return (x2 <= x1) || (y2 <= y1);
@@ -69,6 +78,29 @@ public:
 
 };
 
+inline bool
+operator==(const RectD & b1,
+           const RectD & b2)
+{
+    return b1.x1 == b2.x1 &&
+    b1.y1 == b2.y1 &&
+    b1.x2 == b2.x2 &&
+    b1.y2 == b2.y2;
+}
+
+/// inequality of boxes
+inline bool
+operator!=(const RectD & b1,
+           const RectD & b2)
+{
+    return b1.x1 != b2.x1 ||
+    b1.y1 != b2.y1 ||
+    b1.x2 != b2.x2 ||
+    b1.y2 != b2.y2;
+}
+
+
+
 bool compareDetectionsAtFrame(int frameNumber,
                               int offset1,
                               int offset2,
@@ -79,7 +111,8 @@ bool compareDetectionsAtFrame(int frameNumber,
                               double gtScaleY,
                               bool* foundMatchingDetection,
                               RectD* gtRectOut,
-                              RectD* detectionRectOut)
+                              RectD* detectionRectOut,
+                              std::list<RectD>* allDetections)
 {
     const SERIALIZATION_NAMESPACE::DetectionSerialization* gtDetection = 0;
     {
@@ -123,6 +156,7 @@ bool compareDetectionsAtFrame(int frameNumber,
             detectionRect.x2 = it->x2;
             detectionRect.y2 = it->y2;
 
+            allDetections->push_back(detectionRect);
             RectD intersection;
             if (!gtRect.intersect(detectionRect, &intersection)) {
                 continue;
@@ -153,9 +187,9 @@ bool compareDetectionsAtFrame(int frameNumber,
 
 extern image get_label(image **characters, char *string, int size);
 
-void drawBbox(image& im, const RectD& bbox, const std::string& label, image **alphabet, int color_i)
+void drawBbox(image& im, const RectD& bbox, const std::string& label, image **alphabet, int color_i, double widthPercent)
 {
-    int width = im.h * .012;
+    int width = im.h * widthPercent;
 
     int offset = color_i * 123457 % 2;
 
@@ -180,10 +214,11 @@ void drawBbox(image& im, const RectD& bbox, const std::string& label, image **al
     if(top > im.h) top = im.h;
     if(bot < 0) bot = 0;
 
-    draw_box_width(im, left, top, right, bot, width, red, green, blue);
-    if (alphabet) {
+    draw_box_width(im, left, bot, right, top, width, red, green, blue);
+    if (alphabet && !label.empty()) {
         image labelImg = get_label(alphabet, const_cast<char*>(label.c_str()), (im.h*.03)/10);
-        draw_label(im, top + width, left, labelImg, rgb);
+        int labelY = color_i == 0 ? bot + width : top + width;
+        draw_label(im, labelY, left, labelImg, rgb);
     }
 
 }
@@ -193,15 +228,21 @@ void writeImage(const std::string& inputFilename,
                 const std::string& label,
                 image **alphabet,
                 const RectD& gtRect,
-                const RectD& detectionRect)
+                const RectD& detectionRect,
+                const std::list<RectD> &allDetections)
 {
     image inputImage = load_image_color(const_cast<char*>(inputFilename.c_str()),0,0);
 
     if (!gtRect.isNull()) {
-        drawBbox(inputImage, gtRect, label + "Ground truth", alphabet, 0);
+        drawBbox(inputImage, gtRect, label + " Ground truth", alphabet, 0, 0.012);
     }
     if (!detectionRect.isNull()) {
-        drawBbox(inputImage, gtRect, label + "Detection", alphabet, 1);
+        drawBbox(inputImage, detectionRect, label + " Detection", alphabet, 1, 0.012);
+    }
+    for (std::list<RectD>::const_iterator it = allDetections.begin(); it != allDetections.end(); ++it) {
+        if (*it != detectionRect) {
+            drawBbox(inputImage, *it, std::string(), alphabet, 255, 0.005);
+        }
     }
     save_image(inputImage, outputFilename.c_str());
 }
@@ -453,14 +494,15 @@ int renderImageSequence_main(int argc, char** argv)
 
         RectD gtRect, detectionRect;
         bool foundMatch = false;
-        bool hasGroundTruth = compareDetectionsAtFrame(frameNumber, offset1, offset2, detection1, detection2, label, gtScaleX, gtScaleY, &foundMatch, &gtRect, &detectionRect);
+        std::list<RectD> allDetections;
+        bool hasGroundTruth = compareDetectionsAtFrame(frameNumber, offset1, offset2, detection1, detection2, label, gtScaleX, gtScaleY, &foundMatch, &gtRect, &detectionRect, &allDetections);
 
         if (foundMatch) {
             std::cout << "Found matching detection for frame " << frameNumber << std::endl;
         } else {
             std::cout << "Could not find a matching detection for frame " << frameNumber << std::endl;
         }
-        writeImage(filename, outputFilename, label, alphabet, gtRect, detectionRect);
+        writeImage(filename, outputFilename, label, alphabet, gtRect, detectionRect, allDetections);
 
         if (hasGroundTruth) {
             if (foundMatch) {
@@ -470,7 +512,7 @@ int renderImageSequence_main(int argc, char** argv)
         ++curFrame_i;
     }
 
-    std::cout << "Total matched %: " << nbMatches / inputFilesInOrder.size() << std::endl;
+    std::cout << "Total matched %: " << (nbMatches / (double)inputFilesInOrder.size()) * 100. << std::endl;
 
 
     return 0;
