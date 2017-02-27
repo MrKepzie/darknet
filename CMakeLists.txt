@@ -145,10 +145,14 @@ LIST(REMOVE_ITEM SRC_FILES "${PROJECT_SOURCE_DIR}/src/darknet.c")
 LIST(REMOVE_ITEM SRC_FILES "${PROJECT_SOURCE_DIR}/src/demo.c")
 LIST(REMOVE_ITEM SRC_FILES "${PROJECT_SOURCE_DIR}/src/yolo.c")
 
+set(YOLO_SRC_FILES "${SRC_FILES};${PROJECT_SOURCE_DIR}/src/darknet.c;${PROJECT_SOURCE_DIR}/src/demo.c;${PROJECT_SOURCE_DIR}/src/yolo.c")
+LIST(REMOVE_ITEM YOLO_SRC_FILES "${PROJECT_SOURCE_DIR}/src/detectSequence.c")
+
 set(SRC_FILES "${SRC_FILES};${PROJECT_SOURCE_DIR}/SequenceParsing/SequenceParsing.cpp;${PROJECT_SOURCE_DIR}/SequenceParsing/SequenceParsing.h;${PROJECT_SOURCE_DIR}/SequenceParsing/tinydir/tinydir.h")
 
-set_source_files_properties(${SRC_FILES} PROPERTIES LANGUAGE CXX )
 
+set_source_files_properties(${SRC_FILES} PROPERTIES LANGUAGE CXX )
+set_source_files_properties(${YOLO_SRC_FILES} PROPERTIES LANGUAGE CXX )
 if (CUDA_FOUND)
 
 
@@ -189,6 +193,8 @@ target_link_libraries(compareDetections ${LIBRARIES} autocam-serialization)
 
 add_definitions("-DYAML=YAML_AUTOCAM")
 
-
+add_executable(darknet "${YOLO_SRC_FILES}")
+target_link_libraries(darknet ${LIBRARIES} libdarknet)
+target_link_libraries(darknet ${LIBRARIES} autocam-serialization)
 
 
