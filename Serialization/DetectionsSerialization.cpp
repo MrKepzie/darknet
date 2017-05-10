@@ -24,9 +24,10 @@ DetectionSerialization::encode(YAML::Emitter& em) const
         for (std::size_t i = 0; i < histogramSizes.size(); ++i) {
             em << histogramSizes[i];
         }
+        em << YAML::EndSeq;
         em << YAML::Key << "HistData" << YAML::Value << YAML::BeginSeq;
         for (std::size_t i = 0; i < histogramData.size(); ++i) {
-            em << YAML::Precision(2) << histogramData[i];
+            em << histogramData[i];
         }
 
         em << YAML::EndSeq;

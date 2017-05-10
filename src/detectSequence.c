@@ -169,6 +169,9 @@ struct DetectThreadArgs
     int frameNumber;
     image inputImage, inputImageScaled;
 
+    // Whether to write the file in output or not
+    bool writeOutput;
+
     // Return code
     bool ok;
 
@@ -207,8 +210,8 @@ static void computeHistograms(const RectI& roi, const image& image, SERIALIZATIO
     cv::Mat hsvMat;
 
     {
-        uchar* dstPixels = hsvMat.data;
-        assert(hsvMat.step.p[1] == 3);
+        uchar* dstPixels = rgbMat.data;
+        assert(rgbMat.step.p[1] == 3);
 
         float* srcPixels = image.data + roi.y1 * image.w * image.c + roi.x1 * image.c;
 
@@ -222,12 +225,12 @@ static void computeHistograms(const RectI& roi, const image& image, SERIALIZATIO
                     } else {
                         srcVal = 0;
                     }
-                    dstPixels[c] = std::min(1.f,std::max(0.f, srcVal)) / 255.f;
+                    dstPixels[c] = std::min(1.f,std::max(0.f, srcVal)) * 255.f;
                 }
             }
             // Remove what was done on last iteration and go to the next line
             srcPixels += (image.w * image.c - roi.width() * image.c);
-            dstPixels += (hsvMat.step.p[0] - roi.width() * 3);
+            dstPixels += (rgbMat.step.p[0] - roi.width() * 3);
         }
     }
 
@@ -249,7 +252,7 @@ static void computeHistograms(const RectI& roi, const image& image, SERIALIZATIO
 
     // Calculate the histograms for the HSV images
     calcHist( &hsvMat, 1, channels, cv::Mat() /*mask*/, hist, 2, histSize, ranges, true /*uniform*/, false /*accumulate*/);
-
+    assert(hist.type() ==  CV_32F);
     // normalize between 0 and 1
     cv::normalize( hist, hist, 0, 1, cv::NORM_MINMAX, -1, cv::Mat() );
 
@@ -262,7 +265,7 @@ static void computeHistograms(const RectI& roi, const image& image, SERIALIZATIO
     double* histData = &serialization->histogramData[0];
     for (int i = 0; i < hist.rows; ++i) {
         for (int j = 0; j < hist.cols; ++j) {
-            *histData = hist.at<double>(i, j);
+            *histData = hist.at<float>(i, j);
             ++histData;
         }
     }
@@ -373,21 +376,22 @@ void *detect_in_thread(void *ptr)
 
     args->outSeq->frames.insert(std::make_pair(args->frameNumber, frameSerialization));
 
-    // Write the results file for each frame in case it crash so nothing is lost
-    FStreamsSupport::ofstream ofile;
-    FStreamsSupport::open(&ofile, *args->outputFilename);
-    if (!ofile) {
-        args->ok = false;
-        return 0;
+    // Write the results file
+    if (args->writeOutput) {
+        FStreamsSupport::ofstream ofile;
+        FStreamsSupport::open(&ofile, *args->outputFilename);
+        if (!ofile) {
+            args->ok = false;
+            return 0;
+        }
+        try {
+            SERIALIZATION_NAMESPACE::write(ofile, *args->outSeq, SERIALIZATION_FILE_FORMAT_HEADER);
+        } catch (const std::exception& e) {
+            args->ok = false;
+            fprintf(stderr, "%s", e.what());
+            return 0;
+        }
     }
-    try {
-        SERIALIZATION_NAMESPACE::write(ofile, *args->outSeq, SERIALIZATION_FILE_FORMAT_HEADER);
-    } catch (const std::exception& e) {
-        args->ok = false;
-        fprintf(stderr, "%s", e.what());
-        return 0;
-    }
-
 
     return 0;
 } // detect_in_thread
@@ -656,6 +660,8 @@ int renderImageSequence_main(int argc, char** argv)
         fetchArgs.filename = filename;
         fetch_in_thread(&fetchArgs);
 
+        // Write every 250 frames or if we reach the last one
+        detectArgs.writeOutput = (curFrame_i % 250 == 0) || (curFrame_i == inputFilesInOrder.size() - 1);
         detectArgs.frameNumber = frameNumber;
         detectArgs.inputImage = fetchArgs.inputImage;
         detectArgs.inputImageScaled = fetchArgs.inputImageScaled;
