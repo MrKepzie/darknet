@@ -20,7 +20,133 @@
 #include "SerializationIO.h"
 #include "FStreamsSupport.h"
 
+#ifdef OPENCV
+#include "opencv2/highgui/highgui_c.h"
+#include "opencv2/imgproc/imgproc.hpp"
+#endif
+
 using std::string;
+
+class RectI
+{
+public:
+
+    int x1; // left
+    int y1; // bottom
+    int x2; // right
+    int y2; // top
+
+    RectI()
+    : x1(0), y1(0), x2(0), y2(0)
+    {
+    }
+
+    int width() const
+    {
+        return x2 - x1;
+    }
+
+    int height() const
+    {
+        return y2 - y1;
+    }
+
+    /// returns true if the rect passed as parameter  intersects this one
+    bool intersects(const RectI & r) const
+    {
+        if ( isNull() || r.isNull() ) {
+            return false;
+        }
+        if ( (r.x2 <= x1) || (x2 <= r.x1) || (r.y2 <= y1) || (y2 <= r.y1) ) {
+            return false;
+        }
+
+        return true;
+    }
+
+    bool intersect(const RectI & r,
+                   RectI* intersection) const
+    {
+        if ( !intersects(r) ) {
+            return false;
+        }
+
+        intersection->x1 = std::max(x1, r.x1);
+        intersection->y1 = std::max(y1, r.y1);
+        // the region must be *at least* empty, thus the maximin.
+        intersection->x2 = std::max( intersection->x1, std::min(x2, r.x2) );
+        // the region must be *at least* empty, thus the maximin.
+        intersection->y2 = std::max( intersection->y1, std::min(y2, r.y2) );
+
+        assert( !intersection->isNull() );
+
+        return true;
+    }
+
+
+    bool isNull() const
+    {
+        return (x2 <= x1) || (y2 <= y1);
+    }
+
+    bool contains(const RectI & other) const
+    {
+        return other.x1 >= x1 &&
+        other.y1 >= y1 &&
+        other.x2 <= x2 &&
+        other.y2 <= y2;
+    }
+};
+
+class RectD
+{
+public:
+
+    double x1; // left
+    double y1; // bottom
+    double x2; // right
+    double y2; // top
+
+    RectD()
+    : x1(0), y1(0), x2(0), y2(0)
+    {
+    }
+
+
+    double width() const
+    {
+        return x2 - x1;
+    }
+
+    double height() const
+    {
+        return y2 - y1;
+    }
+
+    bool intersect(const RectD & r,
+                   RectD* intersection) const
+    {
+        if ( isNull() || r.isNull() ) {
+            return false;
+        }
+
+        if ( (x1 > r.x2) || (r.x1 > x2) || (y1 > r.y2) || (r.y1 > y2) ) {
+            return false;
+        }
+
+        intersection->x1 = std::max(x1, r.x1);
+        intersection->x2 = std::min(x2, r.x2);
+        intersection->y1 = std::max(y1, r.y1);
+        intersection->y2 = std::min(y2, r.y2);
+
+        return true;
+    }
+
+    bool isNull() const
+    {
+        return (x2 <= x1) || (y2 <= y1);
+    }
+};
 
 struct FetcherThreadArgs
 {
@@ -61,6 +187,90 @@ struct DetectThreadArgs
 
 };
 
+#ifdef OPENCV
+/**
+ * @brief Computes H and S histograms for the given rectangle
+ **/
+static void computeHistograms(const RectI& roi, const image& image, SERIALIZATION_NAMESPACE::DetectionSerialization* serialization)
+{
+    RectI imageBounds;
+    imageBounds.x1 = 0;
+    imageBounds.y1 = 0;
+    imageBounds.x2 = image.w;
+    imageBounds.y2 = image.h;
+    assert(imageBounds.contains(roi));
+
+
+
+    // Convert the image to a cv::Mat
+    cv::Mat rgbMat(roi.height(), roi.width(), CV_8UC3);
+    cv::Mat hsvMat;
+
+    {
+        uchar* dstPixels = hsvMat.data;
+        assert(hsvMat.step.p[1] == 3);
+
+        float* srcPixels = image.data + roi.y1 * image.w * image.c + roi.x1 * image.c;
+
+        //return data + i0 * step.p[0] + i1 * step.p[1];
+        for (int y = roi.y1; y < roi.y2; ++y) {
+            for (int x = roi.x1; x < roi.x2; ++x,dstPixels += 3, srcPixels += image.c) {
+                for (int c = 0; c < 3; ++c) {
+                    float srcVal;
+                    if (c < image.c) {
+                        srcVal = srcPixels[c];
+                    } else {
+                        srcVal = 0;
+                    }
+                    dstPixels[c] = std::min(1.f,std::max(0.f, srcVal)) / 255.f;
+                }
+            }
+            // Remove what was done on last iteration and go to the next line
+            srcPixels += (image.w * image.c - roi.width() * image.c);
+            dstPixels += (hsvMat.step.p[0] - roi.width() * 3);
+        }
+    }
+
+    // Convert to HSV
+    cv::cvtColor( rgbMat, hsvMat, cv::COLOR_BGR2HSV);
+
+    // Using 32 bins for hue and 32 for saturation
+    int histSize[] = { 32, 32 };
+
+    // hue varies from 0 to 179, saturation from 0 to 255
+    float h_ranges[] = { 0, 180 };
+    float s_ranges[] = { 0, 256 };
+    const float* ranges[] = { h_ranges, s_ranges };
+
+    // Use the 0-th and 1-st channels
+    int channels[] = { 0, 1 };
+
+    cv::Mat hist;
+
+    // Calculate the histograms for the HSV images
+    calcHist( &hsvMat, 1, channels, cv::Mat() /*mask*/, hist, 2, histSize, ranges, true /*uniform*/, false /*accumulate*/);
+
+    // normalize between 0 and 1
+    cv::normalize( hist, hist, 0, 1, cv::NORM_MINMAX, -1, cv::Mat() );
+
+    serialization->histogramSizes.resize(2);
+    serialization->histogramSizes[0] = histSize[0];
+    serialization->histogramSizes[1] = histSize[1];
+
+    serialization->histogramData.resize(hist.rows * hist.cols);
+
+    double* histData = &serialization->histogramData[0];
+    for (int i = 0; i < hist.rows; ++i) {
+        for (int j = 0; j < hist.cols; ++j) {
+            *histData = hist.at<double>(i, j);
+            ++histData;
+        }
+    }
+
+    // Write in output
+}
+#endif // #ifdef OPENCV
+
 void *detect_in_thread(void *ptr)
 {
 
@@ -97,7 +307,6 @@ void *detect_in_thread(void *ptr)
     int imgWidth = args->inputImage.w;
     int imgHeight = args->inputImage.h;
 
-    free_image(args->inputImage);
 
     SERIALIZATION_NAMESPACE::FrameSerialization frameSerialization;
 
@@ -140,10 +349,22 @@ void *detect_in_thread(void *ptr)
         detection.y1 = std::max(0.,std::min((double)imgHeight, detection.y1));
         detection.x2 = std::max(0.,std::min((double)imgWidth, detection.x2));
         detection.y2 = std::max(0.,std::min((double)imgHeight, detection.y2));
+        
+#ifdef OPENCV
+        RectI roi;
+        roi.x1 = std::floor(detection.x1);
+        roi.y1 = std::floor(detection.y1);
+        roi.x2 = std::ceil(detection.x2);
+        roi.y2 = std::ceil(detection.y2);
+        computeHistograms(roi, args->inputImage, &detection);
+#endif
 
         frameSerialization.detections.push_back(detection);
 
     }
+
+    free_image(args->inputImage);
+
 
     // No detection, do not write to the file
     if (frameSerialization.detections.empty()) {
@@ -188,6 +409,19 @@ void split(const std::string &s, char delim, std::vector<std::string>* result) {
     while (std::getline(ss, item, delim)) {
         result->push_back(item);
     }
+}
+
+static void printUsage(const char* argv0)
+{
+    /* Text must hold in 80 columns ************************************************/
+    std::stringstream ss;
+    ss << "Usage:\n"
+    << argv0
+    <<
+    " -i <inputVideo> -o <outputDetectionFile> --cfg <yoloConfigFile> --weights <yoloWeightsFile> [--names <classNamesFile>] [--range <firstFrame-lastFrame>] [--threshold <value>]\n"
+    ;
+    std::cout << ss.str() << std::endl;
+
 }
 
 static void parseArguments(const std::list<string>& args,
@@ -422,7 +656,7 @@ int renderImageSequence_main(int argc, char** argv)
         detectArgs.frameNumber = frameNumber;
         detectArgs.inputImage = fetchArgs.inputImage;
         detectArgs.inputImageScaled = fetchArgs.inputImageScaled;
-	std::cout << "Running detector on frame " << frameNumber << std::endl;
+        std::cout << "Running detector on frame " << frameNumber << std::endl;
         detect_in_thread(&detectArgs);
         if (!detectArgs.ok) {
             return 1;
@@ -439,6 +673,7 @@ int main(int argc, char** argv)
         return renderImageSequence_main(argc, argv);
     } catch (const std::exception& e) {
         fprintf(stderr, "%s", e.what());
+        printUsage(argv[0]);
         exit(1);
     }
 }

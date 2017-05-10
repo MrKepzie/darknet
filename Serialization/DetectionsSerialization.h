@@ -8,6 +8,7 @@
 
 #include <string>
 #include <list>
+#include <vector>
 #include <map>
 #include "SerializationBase.h"
 
@@ -34,6 +35,10 @@ public:
     // An optional label used in the user interface to label the detection to replace
     // the identifier. If unset, this will be assumed to be the identifier.
     std::string uiLabel;
+
+    // Hue and saturation histogram of the image for the detection rectangle
+    std::vector<int> histogramSizes;
+    std::vector<double> histogramData;
 public:
 
     DetectionSerialization()
@@ -44,6 +49,8 @@ public:
     , score(0)
     , label()
     , uiLabel()
+    , histogramSizes()
+    , histogramData()
     {
 
     }
