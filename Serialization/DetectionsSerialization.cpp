@@ -19,6 +19,18 @@ DetectionSerialization::encode(YAML::Emitter& em) const
     if (!uiLabel.empty()) {
         em << YAML::Key << "UILabel" << YAML::Value << uiLabel;
     }
+    if (!histogramSizes.empty()) {
+        em << YAML::Key << "HistSizes" << YAML::Value << YAML::BeginSeq;
+        for (std::size_t i = 0; i < histogramSizes.size(); ++i) {
+            em << histogramSizes[i];
+        }
+        em << YAML::Key << "HistData" << YAML::Value << YAML::BeginSeq;
+        for (std::size_t i = 0; i < histogramData.size(); ++i) {
+            em << YAML::Precision(2) << histogramData[i];
+        }
+
+        em << YAML::EndSeq;
+    }
     em << YAML::EndMap;
 }
 
@@ -42,6 +54,20 @@ DetectionSerialization::decode(const YAML::Node& node)
     label = node["Label"].as<std::string>();
     if (node["UILabel"]) {
         uiLabel = node["UILabel"].as<std::string>();
+    }
+    if (node["HistSizes"]) {
+        YAML::Node histSizeNode = node["HistSizes"];
+        histogramSizes.resize(histSizeNode.size());
+        for (std::size_t i = 0; i < histSizeNode.size(); ++i) {
+            histogramSizes[i] = histSizeNode[i].as<int>();
+        }
+        if (node["HistData"]) {
+            YAML::Node histDataNode = node["HistData"];
+            histogramData.resize(histDataNode.size());
+            for (std::size_t i = 0; i < histDataNode.size(); ++i) {
+                histogramData[i] = histDataNode[i].as<double>();
+            }
+        }
     }
 }
 
