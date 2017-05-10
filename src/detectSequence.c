@@ -211,6 +211,9 @@ static void parseArguments(const std::list<string>& args,
         } else {
             SequenceParsing::filesListFromPattern_slow(*foundInput, inputSequence);
             localArgs.erase(foundInput);
+            if (inputSequence->empty()) {
+                 throw std::invalid_argument("Empty input file");
+            }
         }
     }
     {
