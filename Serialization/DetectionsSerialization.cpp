@@ -5,6 +5,7 @@
 
 #include "DetectionsSerialization.h"
 
+#include <cstring>
 #include <yaml-cpp/yaml.h>
 
 SERIALIZATION_NAMESPACE_ENTER;
@@ -20,6 +21,7 @@ DetectionSerialization::encode(YAML::Emitter& em) const
         em << YAML::Key << "UILabel" << YAML::Value << uiLabel;
     }
     em << YAML::Key << "DataFileOffset" << YAML::Value << dataFileOffset;
+
     em << YAML::EndMap;
 }
 
@@ -44,7 +46,6 @@ DetectionSerialization::decode(const YAML::Node& node)
     if (node["UILabel"]) {
         uiLabel = node["UILabel"].as<std::string>();
     }
-
     dataFileOffset = node["DataFileOffset"].as<std::size_t>();
 
 }
