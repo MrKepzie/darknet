@@ -5,6 +5,7 @@
 
 #include "DetectionsSerialization.h"
 
+#include <cstring>
 #include <yaml-cpp/yaml.h>
 
 SERIALIZATION_NAMESPACE_ENTER;
@@ -25,12 +26,9 @@ DetectionSerialization::encode(YAML::Emitter& em) const
             em << histogramSizes[i];
         }
         em << YAML::EndSeq;
-        em << YAML::Key << "HistData" << YAML::Value << YAML::BeginSeq;
-        for (std::size_t i = 0; i < histogramData.size(); ++i) {
-            em << histogramData[i];
-        }
+        em << YAML::Key << "HistData" << YAML::Value;
+        em << YAML::Binary((const unsigned char*)&histogramData[0], sizeof(double) * histogramData.size());
 
-        em << YAML::EndSeq;
     }
     em << YAML::EndMap;
 }
@@ -59,15 +57,18 @@ DetectionSerialization::decode(const YAML::Node& node)
     if (node["HistSizes"]) {
         YAML::Node histSizeNode = node["HistSizes"];
         histogramSizes.resize(histSizeNode.size());
+        std::size_t histoSize = 1;
         for (std::size_t i = 0; i < histSizeNode.size(); ++i) {
             histogramSizes[i] = histSizeNode[i].as<int>();
+            histoSize *= histogramSizes[i];
         }
+
         if (node["HistData"]) {
             YAML::Node histDataNode = node["HistData"];
-            histogramData.resize(histDataNode.size());
-            for (std::size_t i = 0; i < histDataNode.size(); ++i) {
-                histogramData[i] = histDataNode[i].as<double>();
-            }
+            YAML::Binary binary = histDataNode.as<YAML::Binary>();
+            const unsigned char* data = binary.data();
+            histogramData.resize(histoSize);
+            memcpy(&histogramData[0], data, histoSize * sizeof(double));
         }
     }
 }
