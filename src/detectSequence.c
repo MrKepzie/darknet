@@ -182,6 +182,7 @@ struct DetectThreadArgs
     float hierThresh;
     std::vector<string>* names;
     std::vector<string>* allowedClasses;
+    FStreamsSupport::ofstream* modelFile;
     string *outputFilename;
     SERIALIZATION_NAMESPACE::SequenceSerialization* outSeq;
 
@@ -627,6 +628,20 @@ int renderImageSequence_main(int argc, char** argv)
         probs[j] = (float *)calloc(detectionLayer.classes, sizeof(float));
     }
 
+
+    // Name the model file containing the histograms exactly like outputFile but ending with _model
+    std::string modelFileName = outputFile;
+    {
+        std::size_t foundLastDot = modelFileName.find_last_of(".");
+        if (foundLastDot != std::string::npos) {
+            modelFileName = modelFileName.substr(0, foundLastDot);
+        }
+        modelFileName += "_model";
+    }
+
+    FStreamsSupport::ofstream modelFile;
+    FStreamsSupport::open(&modelFile, modelFileName, std::ios_base::out | std::ios_base::trunc);
+
     int curFrame_i = 0;
 
     FetcherThreadArgs fetchArgs;
@@ -641,6 +656,7 @@ int renderImageSequence_main(int argc, char** argv)
     detectArgs.thresh = thresh;
     detectArgs.hierThresh = hier_thresh;
     detectArgs.names = &names;
+    detectArgs.modelFile = &modelFile;
     detectArgs.outSeq = &detectionResults;
     detectArgs.outputFilename = &outputFile;
     detectArgs.allowedClasses = &allowedNames;

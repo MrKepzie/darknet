@@ -19,18 +19,7 @@ DetectionSerialization::encode(YAML::Emitter& em) const
     if (!uiLabel.empty()) {
         em << YAML::Key << "UILabel" << YAML::Value << uiLabel;
     }
-    if (!histogramSizes.empty()) {
-        em << YAML::Key << "HistSizes" << YAML::Value << YAML::BeginSeq;
-        for (std::size_t i = 0; i < histogramSizes.size(); ++i) {
-            em << histogramSizes[i];
-        }
-        em << YAML::Key << "HistData" << YAML::Value << YAML::BeginSeq;
-        for (std::size_t i = 0; i < histogramData.size(); ++i) {
-            em << YAML::Precision(2) << histogramData[i];
-        }
-
-        em << YAML::EndSeq;
-    }
+    em << YAML::Key << "DataFileOffset" << YAML::Value << dataFileOffset;
     em << YAML::EndMap;
 }
 
@@ -55,20 +44,9 @@ DetectionSerialization::decode(const YAML::Node& node)
     if (node["UILabel"]) {
         uiLabel = node["UILabel"].as<std::string>();
     }
-    if (node["HistSizes"]) {
-        YAML::Node histSizeNode = node["HistSizes"];
-        histogramSizes.resize(histSizeNode.size());
-        for (std::size_t i = 0; i < histSizeNode.size(); ++i) {
-            histogramSizes[i] = histSizeNode[i].as<int>();
-        }
-        if (node["HistData"]) {
-            YAML::Node histDataNode = node["HistData"];
-            histogramData.resize(histDataNode.size());
-            for (std::size_t i = 0; i < histDataNode.size(); ++i) {
-                histogramData[i] = histDataNode[i].as<double>();
-            }
-        }
-    }
+
+    dataFileOffset = node["DataFileOffset"].as<std::size_t>();
+
 }
 
 void
@@ -103,13 +81,30 @@ SequenceSerialization::encode(YAML::Emitter& em) const
     if (frames.empty()) {
         return;
     }
+
+    em << YAML::BeginMap;
+
+
+    if (!histogramSizes.empty()) {
+        em << YAML::Key << "HistSizes" << YAML::Value << YAML::BeginSeq;
+        for (std::size_t i = 0; i < histogramSizes.size(); ++i) {
+            em << histogramSizes[i];
+        }
+
+        em << YAML::EndSeq;
+    }
+
+    em << YAML::Key << "Frames" << YAML::Value;
     em << YAML::BeginMap;
     for (std::map<int, FrameSerialization>::const_iterator it = frames.begin(); it != frames.end(); ++it) {
         em << YAML::Key << it->first;
         em << YAML::Value;
         it->second.encode(em);
     }
+
     em << YAML::EndMap;
+    em << YAML::EndMap;
+
 }
 
 void
@@ -118,11 +113,23 @@ SequenceSerialization::decode(const YAML::Node& node)
     if (!node.IsMap()) {
         throw YAML::InvalidNode();
     }
-    for (YAML::const_iterator it = node.begin(); it != node.end(); ++it) {
-        int frame = it->first.as<int>();
-        FrameSerialization& s = frames[frame];
-        s.decode(it->second);
+    if (node["HistSizes"]) {
+        YAML::Node histSizeNode = node["HistSizes"];
+        histogramSizes.resize(histSizeNode.size());
+        for (std::size_t i = 0; i < histSizeNode.size(); ++i) {
+            histogramSizes[i] = histSizeNode[i].as<int>();
+        }
     }
+
+    YAML::Node framesNode = node["Frames"];
+    if (framesNode) {
+        for (YAML::const_iterator it = framesNode.begin(); it != framesNode.end(); ++it) {
+            int frame = it->first.as<int>();
+            FrameSerialization& s = frames[frame];
+            s.decode(it->second);
+        }
+    }
+
 }
 
 SERIALIZATION_NAMESPACE_EXIT;
