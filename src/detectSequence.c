@@ -29,6 +29,8 @@
 #define HUE_HISTOGRAM_NUM_BINS 32
 #define SAT_HISTOGRAM_NUM_BINS 32
 
+#define MAX_NUM_MODELS_PER_FILE 100000
+
 using std::string;
 
 class RectI
@@ -190,7 +192,8 @@ struct DetectThreadArgs
     std::vector<string>* names;
     std::vector<string>* allowedClasses;
     FStreamsSupport::ofstream* modelFile;
-    std::size_t modelFileOffset;
+    int modelFileIndex;
+    int modelIndexInFile;
     string *outputFilename;
     SERIALIZATION_NAMESPACE::SequenceSerialization* outSeq;
 
@@ -368,8 +371,10 @@ void *detect_in_thread(void *ptr)
 
         const std::size_t dataSize = sizeof(double) * histogramOut.size();
         args->modelFile->write((const char*)&histogramOut[0], dataSize);
-        detection.dataFileOffset = args->modelFileOffset;
-        args->modelFileOffset += dataSize;
+
+        detection.modelIndex = args->modelIndexInFile;
+        ++args->modelIndexInFile;
+        detection.fileIndex = args->modelFileIndex;
 #endif
 
         frameSerialization.detections.push_back(detection);
@@ -651,6 +656,7 @@ int renderImageSequence_main(int argc, char** argv)
 
     // Name the model file containing the histograms exactly like outputFile but ending with _model
     std::string modelFileName = outputFile;
+    std::string modelAbsoluteFileName;
     {
         // Remove extension
         std::size_t foundLastDot = modelFileName.find_last_of(".");
@@ -658,20 +664,16 @@ int renderImageSequence_main(int argc, char** argv)
             modelFileName = modelFileName.substr(0, foundLastDot);
         }
         modelFileName += "_model";
+        modelAbsoluteFileName = modelFileName;
 
         // Remove path
         std::size_t foundSlash = modelFileName.find_last_of("/");
         if (foundLastDot != std::string::npos) {
             modelFileName = modelFileName.substr(foundSlash + 1);
         }
-        detectionResults.histogramFileName = modelFileName;
     }
 
-    FStreamsSupport::ofstream modelFile;
-    FStreamsSupport::open(&modelFile, modelFileName, std::ios_base::out | std::ios_base::trunc);
-    if (!modelFile) {
-         throw std::invalid_argument("Could not open " + modelFileName);
-    }
+
     int curFrame_i = 0;
 
     FetcherThreadArgs fetchArgs;
@@ -686,11 +688,13 @@ int renderImageSequence_main(int argc, char** argv)
     detectArgs.thresh = thresh;
     detectArgs.hierThresh = hier_thresh;
     detectArgs.names = &names;
-    detectArgs.modelFile = &modelFile;
-    detectArgs.modelFileOffset = 0;
+    detectArgs.modelFileIndex = 0;
     detectArgs.outSeq = &detectionResults;
     detectArgs.outputFilename = &outputFile;
     detectArgs.allowedClasses = &allowedNames;
+
+    std::auto_ptr<FStreamsSupport::ofstream> modelFile;
+
 
     while (curFrame_i < (int)inputFilesInOrder.size()) {
 
@@ -700,8 +704,40 @@ int renderImageSequence_main(int argc, char** argv)
         fetchArgs.filename = filename;
         fetch_in_thread(&fetchArgs);
 
-        // Write every 250 frames or if we reach the last one
-        detectArgs.writeOutput = (curFrame_i % 250 == 0) || (curFrame_i == inputFilesInOrder.size() - 1);
+
+        if (!modelFile.get() || detectArgs.modelIndexInFile >= MAX_NUM_MODELS_PER_FILE) {
+            if (modelFile.get()) {
+                modelFile->flush();
+                modelFile->close();
+                ++detectArgs.modelFileIndex;
+            }
+            detectArgs.modelIndexInFile = 0;
+            modelFile.reset(new FStreamsSupport::ofstream);
+
+            std::string actualFileName;
+            {
+                std::stringstream ss;
+                ss << modelAbsoluteFileName << detectArgs.modelFileIndex +1;
+                actualFileName = ss.str();
+            }
+            std::string actualRelativeFileName;
+            {
+                std::stringstream ss;
+                ss << modelFileName << detectArgs.modelFileIndex +1;
+                actualRelativeFileName = ss.str();
+            }
+            FStreamsSupport::open(modelFile.get(), actualFileName, std::ios_base::out | std::ios_base::trunc);
+            if (!modelFile->is_open()) {
+                throw std::invalid_argument("Could not open " + actualFileName);
+            }
+
+
+            detectionResults.modelFiles.push_back(actualRelativeFileName);
+            detectArgs.modelFile = modelFile.get();
+        }
+
+        // Write if we reach the last one
+        detectArgs.writeOutput = (curFrame_i == inputFilesInOrder.size() - 1);
         detectArgs.frameNumber = frameNumber;
         detectArgs.inputImage = fetchArgs.inputImage;
         detectArgs.inputImageScaled = fetchArgs.inputImageScaled;
@@ -713,7 +749,10 @@ int renderImageSequence_main(int argc, char** argv)
 
         ++curFrame_i;
     }
-    modelFile.flush();
+    if (modelFile.get()) {
+        modelFile->flush();
+        modelFile->close();
+    }
     
     return 0;
 } // renderImageSequence_main

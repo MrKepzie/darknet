@@ -36,8 +36,11 @@ public:
     // the identifier. If unset, this will be assumed to be the identifier.
     std::string uiLabel;
 
-    // The file offset at which the model data for this detection starts
-    std::size_t dataFileOffset;
+    // The index of the file in which the model for this detection is (in modelFiles)
+    int fileIndex;
+
+    // The file offset (to be multiplied by histogramSizes) at which the model data for this detection starts
+    std::size_t modelIndex;
 
 public:
 
@@ -49,7 +52,8 @@ public:
     , score(0)
     , label()
     , uiLabel()
-    , dataFileOffset(0)
+    , fileIndex(-1)
+    , modelIndex(0)
     {
 
     }
@@ -96,14 +100,14 @@ public:
     // Hue and saturation histogram of the image for the detection rectangle
     std::vector<int> histogramSizes;
 
-    // The filename of the model file: this is relative to the actual detection fle
-    std::string histogramFileName;
+    // The filenames of the model files: they are relative to the actual detection file
+    std::vector<std::string> modelFiles;
 
 
     SequenceSerialization()
     : frames()
     , histogramSizes()
-    , histogramFileName()
+    , modelFiles()
     {
 
     }
