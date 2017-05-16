@@ -25,6 +25,10 @@
 #include "opencv2/imgproc/imgproc.hpp"
 #endif
 
+// The size of the model will be HUE_HISTOGRAM_NUM_BINS * SAT_HISTOGRAM_NUM_BINS
+#define HUE_HISTOGRAM_NUM_BINS 32
+#define SAT_HISTOGRAM_NUM_BINS 32
+
 using std::string;
 
 class RectI
@@ -186,6 +190,7 @@ struct DetectThreadArgs
     std::vector<string>* names;
     std::vector<string>* allowedClasses;
     FStreamsSupport::ofstream* modelFile;
+    std::size_t modelFileOffset;
     string *outputFilename;
     SERIALIZATION_NAMESPACE::SequenceSerialization* outSeq;
 
@@ -195,7 +200,7 @@ struct DetectThreadArgs
 /**
  * @brief Computes H and S histograms for the given rectangle
  **/
-static void computeHistograms(const RectI& roi, const image& image, SERIALIZATION_NAMESPACE::DetectionSerialization* serialization)
+static void computeHistograms(const RectI& roi, const image& image, std::vector<double>* histogramOut)
 {
     RectI imageBounds;
     imageBounds.x1 = 0;
@@ -239,7 +244,7 @@ static void computeHistograms(const RectI& roi, const image& image, SERIALIZATIO
     cv::cvtColor( rgbMat, hsvMat, cv::COLOR_BGR2HSV);
 
     // Using 32 bins for hue and 32 for saturation
-    int histSize[] = { 32, 32 };
+    int histSize[] = { HUE_HISTOGRAM_NUM_BINS, SAT_HISTOGRAM_NUM_BINS };
 
     // hue varies from 0 to 179, saturation from 0 to 255
     float h_ranges[] = { 0, 180 };
@@ -257,13 +262,10 @@ static void computeHistograms(const RectI& roi, const image& image, SERIALIZATIO
     // normalize between 0 and 1
     cv::normalize( hist, hist, 0, 1, cv::NORM_MINMAX, -1, cv::Mat() );
 
-    serialization->histogramSizes.resize(2);
-    serialization->histogramSizes[0] = histSize[0];
-    serialization->histogramSizes[1] = histSize[1];
 
-    serialization->histogramData.resize(hist.rows * hist.cols);
+    histogramOut->resize(hist.rows * hist.cols);
 
-    double* histData = &serialization->histogramData[0];
+    double* histData = &(*histogramOut)[0];
     for (int i = 0; i < hist.rows; ++i) {
         for (int j = 0; j < hist.cols; ++j) {
             *histData = hist.at<float>(i, j);
@@ -360,7 +362,14 @@ void *detect_in_thread(void *ptr)
         roi.y1 = std::floor(detection.y1);
         roi.x2 = std::ceil(detection.x2);
         roi.y2 = std::ceil(detection.y2);
-        computeHistograms(roi, args->inputImage, &detection);
+
+        std::vector<double> histogramOut;
+        computeHistograms(roi, args->inputImage, &histogramOut);
+
+        const std::size_t dataSize = sizeof(double) * histogramOut.size();
+        args->modelFile->write((const char*)&histogramOut[0], dataSize);
+        detection.dataFileOffset = args->modelFileOffset;
+        args->modelFileOffset += dataSize;
 #endif
 
         frameSerialization.detections.push_back(detection);
@@ -615,6 +624,10 @@ int renderImageSequence_main(int argc, char** argv)
 
     SERIALIZATION_NAMESPACE::SequenceSerialization detectionResults;
 
+    detectionResults.histogramSizes.push_back(HUE_HISTOGRAM_NUM_BINS);
+    detectionResults.histogramSizes.push_back(SAT_HISTOGRAM_NUM_BINS);
+
+
     network net = parse_network_cfg(const_cast<char*>(cfgFilename.c_str()));
     load_weights(&net, const_cast<char*>(weightFilename.c_str()));
     set_batch_network(&net, 1);
@@ -639,16 +652,26 @@ int renderImageSequence_main(int argc, char** argv)
     // Name the model file containing the histograms exactly like outputFile but ending with _model
     std::string modelFileName = outputFile;
     {
+        // Remove extension
         std::size_t foundLastDot = modelFileName.find_last_of(".");
         if (foundLastDot != std::string::npos) {
             modelFileName = modelFileName.substr(0, foundLastDot);
         }
         modelFileName += "_model";
+
+        // Remove path
+        std::size_t foundSlash = modelFileName.find_last_of("/");
+        if (foundLastDot != std::string::npos) {
+            modelFileName = modelFileName.substr(foundSlash + 1);
+        }
+        detectionResults.histogramFileName = modelFileName;
     }
 
     FStreamsSupport::ofstream modelFile;
     FStreamsSupport::open(&modelFile, modelFileName, std::ios_base::out | std::ios_base::trunc);
-
+    if (!modelFile) {
+         throw std::invalid_argument("Could not open " + modelFileName);
+    }
     int curFrame_i = 0;
 
     FetcherThreadArgs fetchArgs;
@@ -664,6 +687,7 @@ int renderImageSequence_main(int argc, char** argv)
     detectArgs.hierThresh = hier_thresh;
     detectArgs.names = &names;
     detectArgs.modelFile = &modelFile;
+    detectArgs.modelFileOffset = 0;
     detectArgs.outSeq = &detectionResults;
     detectArgs.outputFilename = &outputFile;
     detectArgs.allowedClasses = &allowedNames;
@@ -689,6 +713,8 @@ int renderImageSequence_main(int argc, char** argv)
 
         ++curFrame_i;
     }
+    modelFile.flush();
+    
     return 0;
 } // renderImageSequence_main
 
