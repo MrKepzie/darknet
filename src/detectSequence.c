@@ -387,7 +387,7 @@ void convertRGBToHSVInternal(const SRCPIX* srcPixelsData, const RectI& srcBounds
 {
 
     const SRCPIX* srcPixels = getPixels<SRCPIX>(roi.x1, roi.y1, srcBounds, nComps, srcPixelsData);
-    DSTPIX* dstPixels = getPixels<DSTPIX>(roi.x1, roi.y1, srcBounds, nComps, dstPixelsData);
+    DSTPIX* dstPixels = getPixels<DSTPIX>(roi.x1, roi.y1, dstBounds, nComps, dstPixelsData);
 
     for (int y = roi.y1; y < roi.y2; ++y) {
         for (int x = roi.x1; x < roi.x2; ++x, srcPixels += nComps, dstPixels += nComps) {
@@ -772,13 +772,6 @@ void *detect_in_thread(void *ptr)
 
     DetectThreadArgs* args = (DetectThreadArgs*)ptr;
     args->ok = true;
-
-    std::vector<double> test;
-    RectI rod;
-    rod.x1 = rod.y1 = 0;
-    rod.x2 = args->inputImage.w;
-    rod.y2 = args->inputImage.h;
-    computeHistograms(rod, args->inputImage, &test);
 
     float nms = .4;
 
