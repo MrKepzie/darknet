@@ -804,7 +804,7 @@ void *detect_in_thread(void *ptr)
     if (nms > 0) {
         do_nms(args->boxes, args->probs, l.w*l.h*l.n, l.classes, nms);
     }
-
+     
     int gridSize = l.w * l.h * l.n;
     int nClasses = (int)args->names->size();
 
@@ -948,8 +948,11 @@ static bool isVideoFile(const std::string& ext)
 }
 
 static void parseArguments(const std::list<string>& args,
-                           SequenceParsing::SequenceFromPattern* inputSequence,
+                            std::vector<std::pair<std::string,int> > * inputFilesInOrder,
+                           std::string *firstFrameFileName,
                            int* firstFrame, int* lastFrame,
+                           CvCapture** videoStream,
+                           int* numFrames,
                            string* cfgFilename,
                            string* weightFilename,
                            float* thresh,
@@ -957,6 +960,8 @@ static void parseArguments(const std::list<string>& args,
                            string* outputFilename)
 {
     std::list<string> localArgs = args;
+
+    SequenceParsing::SequenceFromPattern inputSequence;
     {
         std::list<string>::iterator foundInput = hasToken(localArgs, "-i");
         if (foundInput == localArgs.end()) {
@@ -966,18 +971,64 @@ static void parseArguments(const std::list<string>& args,
         if ( foundInput == localArgs.end() ) {
             throw std::invalid_argument("-i switch without a file name");
         } else {
-            SequenceParsing::filesListFromPattern_slow(*foundInput, inputSequence);
+            SequenceParsing::filesListFromPattern_slow(*foundInput, &inputSequence);
             localArgs.erase(foundInput);
-            if (inputSequence->empty()) {
+            if (inputSequence.empty()) {
                  throw std::invalid_argument("Empty input file");
             }
         }
     }
+
+    bool isVideo;
+    {
+        *firstFrameFileName = inputSequence.begin()->second.begin()->second;
+        std::string ext;
+        std::size_t foundDot = firstFrameFileName->find_last_of(".");
+        if (foundDot != std::string::npos) {
+            ext = firstFrameFileName->substr(foundDot + 1);
+        }
+        isVideo = isVideoFile(ext);
+    }
+
+
+    if (!isVideo) {
+        SequenceParsing::SequenceFromPattern::iterator startIt = inputSequence.find(*firstFrame);
+        SequenceParsing::SequenceFromPattern::iterator endIt = inputSequence.find(*lastFrame);
+        if (startIt == inputSequence.end() || endIt == inputSequence.end()) {
+            throw std::invalid_argument("Invalid frame range");
+        }
+        ++endIt;
+        for (SequenceParsing::SequenceFromPattern::iterator it = startIt; it != endIt; ++it) {
+            inputFilesInOrder->push_back(std::make_pair(it->second.begin()->second, it->first));
+        }
+        *numFrames = inputFilesInOrder->size();
+
+        if (inputFilesInOrder->empty()) {
+            throw std::invalid_argument("At least one frame must be detected");
+        }
+    } else {
+        *videoStream = cvCaptureFromFile(firstFrameFileName->c_str());
+        if (!videoStream) {
+            throw std::invalid_argument("Could not open " + *firstFrameFileName);
+        }
+
+        *numFrames = cvGetCaptureProperty(*videoStream, CV_CAP_PROP_FRAME_COUNT);
+
+    }
+
+    int defaultFirstFrame,defaultLastFrame;
+    if (!isVideo) {
+        defaultFirstFrame = inputSequence.begin()->first;
+        defaultLastFrame = inputSequence.rbegin()->first;
+    } else {
+        defaultFirstFrame = 1;
+        defaultLastFrame = *numFrames - 1;
+    }
     {
         std::list<string>::iterator foundInput = hasToken(localArgs, "--range");
         if (foundInput == localArgs.end()) {
-            *firstFrame = inputSequence->begin()->first;
-            *lastFrame = inputSequence->rbegin()->first;
+            *firstFrame = defaultFirstFrame;
+            *lastFrame = defaultLastFrame;
         } else {
             foundInput = localArgs.erase(foundInput);
             if ( foundInput == localArgs.end() ) {
@@ -997,19 +1048,9 @@ static void parseArguments(const std::list<string>& args,
                     ss >> *lastFrame;
                 }
 
-                bool isVideo;
-                std::string firstFrameFileName;
-                {
-                    firstFrameFileName = inputSequence->begin()->second.begin()->second;
-                    std::string ext;
-                    std::size_t foundDot = firstFrameFileName.find_last_of(".");
-                    if (foundDot != std::string::npos) {
-                        ext = firstFrameFileName.substr(foundDot + 1);
-                    }
-                    isVideo = isVideoFile(ext);
-                }
-                if (!isVideo && (*firstFrame < inputSequence->begin()->first || *lastFrame > inputSequence->rbegin()->first)) {
-                    printf("Frame range must be in the sequence range (%i-%i)",inputSequence->begin()->first, inputSequence->rbegin()->first);
+
+                if (*firstFrame < defaultFirstFrame || *lastFrame > defaultLastFrame) {
+                    printf("Frame range must be in the sequence range (%i-%i)",defaultFirstFrame, defaultLastFrame);
                     exit(1);
                 }
                 localArgs.erase(foundInput);
@@ -1130,8 +1171,11 @@ int renderImageSequence_main(int argc, char** argv)
         arguments.push_back(string(argv[i]));
     }
 
-    SequenceParsing::SequenceFromPattern inputFiles;
+    CvCapture * videoStream = 0;
+    std::vector<std::pair<std::string,int> > inputFilesInOrder;
+    std::string firstFrameFileName;
     int firstFrame, lastFrame;
+    int numFrames;
     string cfgFilename, weightFilename;
     float thresh;
     std::vector<string> names;
@@ -1139,25 +1183,13 @@ int renderImageSequence_main(int argc, char** argv)
     float hier_thresh = .5;
     std::vector<string> allowedNames;
     allowedNames.push_back("person");
-    parseArguments(arguments, &inputFiles, &firstFrame, &lastFrame, &cfgFilename, &weightFilename, &thresh, &names, &outputFile);
+    parseArguments(arguments, &inputFilesInOrder, &firstFrameFileName, &firstFrame, &lastFrame, &videoStream, &numFrames, &cfgFilename, &weightFilename, &thresh, &names, &outputFile);
+
+    CaptureHolder captureHolder(videoStream);
+
 
     // vector of pair<filename, framenumber> >
-    std::vector<std::pair<std::string,int> > inputFilesInOrder;
 
-    {
-        SequenceParsing::SequenceFromPattern::iterator startIt = inputFiles.find(firstFrame);
-        SequenceParsing::SequenceFromPattern::iterator endIt = inputFiles.find(lastFrame);
-        if (startIt == inputFiles.end() || endIt == inputFiles.end()) {
-            throw std::invalid_argument("Invalid frame range");
-        }
-        ++endIt;
-        for (SequenceParsing::SequenceFromPattern::iterator it = startIt; it != endIt; ++it) {
-            inputFilesInOrder.push_back(std::make_pair(it->second.begin()->second, it->first));
-        }
-    }
-    if (inputFilesInOrder.empty()) {
-        throw std::invalid_argument("At least one frame must be detected");
-    }
 
     SERIALIZATION_NAMESPACE::SequenceSerialization detectionResults;
 
@@ -1226,42 +1258,13 @@ int renderImageSequence_main(int argc, char** argv)
 
     std::auto_ptr<FStreamsSupport::ofstream> modelFile;
 
-    // Check if this is a video file
-    bool isVideo;
-    std::string firstFrameFileName;
-    {
-        firstFrameFileName = inputFilesInOrder[0].first;
-        std::string ext;
-        std::size_t foundDot = firstFrameFileName.find_last_of(".");
-        if (foundDot != std::string::npos) {
-            ext = firstFrameFileName.substr(foundDot + 1);
-        }
-        isVideo = isVideoFile(ext);
-    }
-
-
-    int numFrames = 0;
-    CvCapture * videoStream = 0;
-    if (isVideo) {
-        videoStream = cvCaptureFromFile(firstFrameFileName.c_str());
-        if (!videoStream) {
-            throw std::invalid_argument("Could not open " + firstFrameFileName);
-        }
-
-        numFrames = cvGetCaptureProperty(videoStream, CV_CAP_PROP_FRAME_COUNT);
-    } else {
-        numFrames = inputFilesInOrder.size();
-    }
-
-    CaptureHolder captureHolder(videoStream);
-
     // For a video start on frame 1
-    int curFrame_i = isVideo ? 1 : 0;
+    int curFrame_i = videoStream ? 1 : 0;
 
     while (curFrame_i < numFrames) {
 
-        int frameNumber = !isVideo ? inputFilesInOrder[curFrame_i].second : curFrame_i;
-        const std::string& filename = !isVideo ? inputFilesInOrder[curFrame_i].first : firstFrameFileName;
+        int frameNumber = !videoStream ? inputFilesInOrder[curFrame_i].second : curFrame_i;
+        const std::string& filename = !videoStream ? inputFilesInOrder[curFrame_i].first : firstFrameFileName;
         fetchArgs.capture = videoStream;
         fetchArgs.filename = filename;
         fetch_in_thread(&fetchArgs);
@@ -1270,7 +1273,7 @@ int renderImageSequence_main(int argc, char** argv)
             throw std::invalid_argument("Could not open " + filename);
         }
 
-        if (isVideo) {
+        if (videoStream) {
             // Respect user frame range
             if (curFrame_i < firstFrame) {
                 continue;
@@ -1312,7 +1315,7 @@ int renderImageSequence_main(int argc, char** argv)
         }
 
         // Write if we reach the last one
-        detectArgs.writeOutput = (curFrame_i == numFrames - 1);
+        detectArgs.writeOutput = (curFrame_i == numFrames - 1 || curFrame_i == lastFrame);
         detectArgs.frameNumber = frameNumber;
         detectArgs.inputImage = fetchArgs.inputImage;
         detectArgs.inputImageScaled = fetchArgs.inputImageScaled;
