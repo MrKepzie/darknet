@@ -996,7 +996,19 @@ static void parseArguments(const std::list<string>& args,
                     std::stringstream ss(rangeVec[1]);
                     ss >> *lastFrame;
                 }
-                if (*firstFrame < inputSequence->begin()->first || *lastFrame > inputSequence->rbegin()->first) {
+
+                bool isVideo;
+                std::string firstFrameFileName;
+                {
+                    firstFrameFileName = inputSequence->begin()->second.begin()->second;
+                    std::string ext;
+                    std::size_t foundDot = firstFrameFileName.find_last_of(".");
+                    if (foundDot != std::string::npos) {
+                        ext = firstFrameFileName.substr(foundDot + 1);
+                    }
+                    isVideo = isVideoFile(ext);
+                }
+                if (!isVideo && (*firstFrame < inputSequence->begin()->first || *lastFrame > inputSequence->rbegin()->first)) {
                     printf("Frame range must be in the sequence range (%i-%i)",inputSequence->begin()->first, inputSequence->rbegin()->first);
                     exit(1);
                 }
