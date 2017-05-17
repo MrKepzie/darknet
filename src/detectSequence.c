@@ -1194,7 +1194,6 @@ int renderImageSequence_main(int argc, char** argv)
     }
 
 
-    int curFrame_i = 0;
 
     FetcherThreadArgs fetchArgs;
     fetchArgs.net = &net;
@@ -1244,6 +1243,9 @@ int renderImageSequence_main(int argc, char** argv)
 
     CaptureHolder captureHolder(videoStream);
 
+    // For a video start on frame 1
+    int curFrame_i = isVideo ? 1 : 0;
+
     while (curFrame_i < numFrames) {
 
         int frameNumber = !isVideo ? inputFilesInOrder[curFrame_i].second : curFrame_i;
@@ -1254,6 +1256,16 @@ int renderImageSequence_main(int argc, char** argv)
 
         if (!fetchArgs.inputImage.data) {
             throw std::invalid_argument("Could not open " + filename);
+        }
+
+        if (isVideo) {
+            // Respect user frame range
+            if (curFrame_i < firstFrame) {
+                continue;
+            }
+            if (curFrame_i > lastFrame) {
+                break;
+            }
         }
 
         if (!modelFile.get() || detectArgs.modelIndexInFile >= MAX_NUM_MODELS_PER_FILE) {
@@ -1288,7 +1300,7 @@ int renderImageSequence_main(int argc, char** argv)
         }
 
         // Write if we reach the last one
-        detectArgs.writeOutput = (curFrame_i == inputFilesInOrder.size() - 1);
+        detectArgs.writeOutput = (curFrame_i == numFrames - 1);
         detectArgs.frameNumber = frameNumber;
         detectArgs.inputImage = fetchArgs.inputImage;
         detectArgs.inputImageScaled = fetchArgs.inputImageScaled;
