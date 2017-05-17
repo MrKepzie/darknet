@@ -158,13 +158,21 @@ struct FetcherThreadArgs
 {
     image inputImage, inputImageScaled;
     string filename;
+    CvCapture* capture;
     network* net;
 };
+
+image get_image_from_stream(CvCapture *cap);
+image ipl_to_image(IplImage* src);
 
 void *fetch_in_thread(void *ptr)
 {
     FetcherThreadArgs* args = (FetcherThreadArgs*)ptr;
-    args->inputImage = load_image_color(const_cast<char*>(args->filename.c_str()),0,0);
+    if (args->capture) {
+        args->inputImage = get_image_from_stream(args->capture);
+    } else {
+        args->inputImage = load_image_color(const_cast<char*>(args->filename.c_str()),0,0);
+    }
     args->inputImageScaled = resize_image(args->inputImage, args->net->w, args->net->h);
     return 0;
 }
@@ -930,6 +938,15 @@ static void printUsage(const char* argv0)
 
 }
 
+static bool isVideoFile(const std::string& ext)
+{
+    std::string lower;
+    for (std::size_t i = 0; i < ext.size(); ++i) {
+        lower.push_back(std::tolower(ext[i]));
+    }
+    return lower == "mp4" || lower == "mov" || lower == "avi";
+}
+
 static void parseArguments(const std::list<string>& args,
                            SequenceParsing::SequenceFromPattern* inputSequence,
                            int* firstFrame, int* lastFrame,
@@ -1076,6 +1093,22 @@ static void parseArguments(const std::list<string>& args,
 
 } // parseArguments
 
+struct CaptureHolder
+{
+    CvCapture* _cap;
+    CaptureHolder(CvCapture* cap)
+    : _cap(cap)
+    {
+
+    }
+
+    ~CaptureHolder()
+    {
+        if (_cap) {
+            cvReleaseCapture(&_cap);
+        }
+    }
+};
 
 
 int renderImageSequence_main(int argc, char** argv)
@@ -1182,15 +1215,46 @@ int renderImageSequence_main(int argc, char** argv)
 
     std::auto_ptr<FStreamsSupport::ofstream> modelFile;
 
+    // Check if this is a video file
+    bool isVideo;
+    std::string firstFrameFileName;
+    {
+        firstFrameFileName = inputFilesInOrder[0].first;
+        std::string ext;
+        std::size_t foundDot = firstFrameFileName.find_last_of(".");
+        if (foundDot != std::string::npos) {
+            ext = firstFrameFileName.substr(foundDot + 1);
+        }
+        isVideo = isVideoFile(ext);
+    }
 
-    while (curFrame_i < (int)inputFilesInOrder.size()) {
 
-        int frameNumber = inputFilesInOrder[curFrame_i].second;
-        const std::string& filename = inputFilesInOrder[curFrame_i].first;
+    int numFrames = 0;
+    CvCapture * videoStream = 0;
+    if (isVideo) {
+        videoStream = cvCaptureFromFile(firstFrameFileName.c_str());
+        if (!videoStream) {
+            throw std::invalid_argument("Could not open " + firstFrameFileName);
+        }
 
+        numFrames = cvGetCaptureProperty(videoStream, CV_CAP_PROP_FRAME_COUNT);
+    } else {
+        numFrames = inputFilesInOrder.size();
+    }
+
+    CaptureHolder captureHolder(videoStream);
+
+    while (curFrame_i < numFrames) {
+
+        int frameNumber = !isVideo ? inputFilesInOrder[curFrame_i].second : curFrame_i;
+        const std::string& filename = !isVideo ? inputFilesInOrder[curFrame_i].first : firstFrameFileName;
+        fetchArgs.capture = videoStream;
         fetchArgs.filename = filename;
         fetch_in_thread(&fetchArgs);
 
+        if (!fetchArgs.inputImage.data) {
+            throw std::invalid_argument("Could not open " + filename);
+        }
 
         if (!modelFile.get() || detectArgs.modelIndexInFile >= MAX_NUM_MODELS_PER_FILE) {
             if (modelFile.get()) {
