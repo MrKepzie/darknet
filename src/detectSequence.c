@@ -886,10 +886,10 @@ void *detect_in_thread(void *ptr)
     // No detection, do not write to the file
     if (frameSerialization.detections.empty()) {
         std::cerr << "No detection at frame " << args->frameNumber << std::endl;
-        return 0;
+    } else {
+        args->outSeq->frames.insert(std::make_pair(args->frameNumber, frameSerialization));
     }
 
-    args->outSeq->frames.insert(std::make_pair(args->frameNumber, frameSerialization));
 
     // Write the results file
     if (args->writeOutput) {
