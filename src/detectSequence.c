@@ -581,19 +581,20 @@ void computeHistogram(int nComps, BitDepthEnum depth, const void* srcPixelsData,
 
 
 static void normalizeHistogram(std::vector<double>* histogram) {
-    double maxValue = 0.;
+    double s1 = 0;
     for (std::size_t i = 0; i < histogram->size(); ++i) {
-        maxValue = std::max((*histogram)[i], maxValue);
+        s1 += (*histogram)[i];
     }
-
-    if (maxValue == 0) {
+    if (s1 == 0) {
         return;
     }
+
     for (std::size_t i = 0; i < histogram->size(); ++i) {
-        (*histogram)[i] /= maxValue;
+        (*histogram)[i] /= s1;
     }
 
 }
+
 template <typename T>
 class RamBuffer
 {
