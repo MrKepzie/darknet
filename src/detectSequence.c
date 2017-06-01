@@ -825,10 +825,14 @@ void *detect_in_thread(void *ptr)
         std::string& label = (*args->names)[class1];
 
         bool keepDetection = false;
-        for (std::size_t c = 0; c < args->allowedClasses->size(); ++c) {
-            if ((*args->allowedClasses)[c] == label) {
-                keepDetection = true;
-                break;
+        if (args->allowedClasses->empty()) {
+            keepDetection = true;
+        } else {
+            for (std::size_t c = 0; c < args->allowedClasses->size(); ++c) {
+                if ((*args->allowedClasses)[c] == label) {
+                    keepDetection = true;
+                    break;
+                }
             }
         }
         if (!keepDetection) {
@@ -882,10 +886,11 @@ void *detect_in_thread(void *ptr)
 
     // No detection, do not write to the file
     if (frameSerialization.detections.empty()) {
-        return 0;
+        std::cerr << "No detection at frame " << args->frameNumber << std::endl;
+    } else {
+        args->outSeq->frames.insert(std::make_pair(args->frameNumber, frameSerialization));
     }
 
-    args->outSeq->frames.insert(std::make_pair(args->frameNumber, frameSerialization));
 
     // Write the results file
     if (args->writeOutput) {
@@ -1259,12 +1264,11 @@ int renderImageSequence_main(int argc, char** argv)
 
     std::auto_ptr<FStreamsSupport::ofstream> modelFile;
 
-    // For a video start on frame 1
-    int curFrame_i = videoStream ? 1 : 0;
+    int curFrame_i = 0;
 
     while (curFrame_i < numFrames) {
 
-        int frameNumber = !videoStream ? inputFilesInOrder[curFrame_i].second : curFrame_i;
+        int frameNumber = !videoStream ? inputFilesInOrder[curFrame_i].second : curFrame_i + 1;
         const std::string& filename = !videoStream ? inputFilesInOrder[curFrame_i].first : firstFrameFileName;
         fetchArgs.capture = videoStream;
         fetchArgs.filename = filename;
@@ -1276,10 +1280,10 @@ int renderImageSequence_main(int argc, char** argv)
 
         if (videoStream) {
             // Respect user frame range
-            if (curFrame_i < firstFrame) {
+            if (curFrame_i < firstFrame - 1) {
                 continue;
             }
-            if (curFrame_i > lastFrame) {
+            if (curFrame_i > lastFrame - 1) {
                 break;
             }
         }
@@ -1316,7 +1320,7 @@ int renderImageSequence_main(int argc, char** argv)
         }
 
         // Write if we reach the last one
-        detectArgs.writeOutput = (curFrame_i == numFrames - 1 || curFrame_i == lastFrame);
+        detectArgs.writeOutput = (curFrame_i == numFrames - 1 || curFrame_i == lastFrame - 1);
         detectArgs.frameNumber = frameNumber;
         detectArgs.inputImage = fetchArgs.inputImage;
         detectArgs.inputImageScaled = fetchArgs.inputImageScaled;
