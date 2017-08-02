@@ -148,6 +148,8 @@ LIST(REMOVE_ITEM SRC_FILES "${PROJECT_SOURCE_DIR}/src/yolo.c")
 set(YOLO_SRC_FILES "${SRC_FILES};${PROJECT_SOURCE_DIR}/src/darknet.c;${PROJECT_SOURCE_DIR}/src/demo.c;${PROJECT_SOURCE_DIR}/src/yolo.c")
 LIST(REMOVE_ITEM YOLO_SRC_FILES "${PROJECT_SOURCE_DIR}/src/detectSequence.c")
 LIST(REMOVE_ITEM YOLO_SRC_FILES "${PROJECT_SOURCE_DIR}/src/compareDetections.c")
+LIST(REMOVE_ITEM YOLO_SRC_FILES "${PROJECT_SOURCE_DIR}/src/groundtruthStats.c")
+
 
 set(SRC_FILES "${SRC_FILES};${PROJECT_SOURCE_DIR}/SequenceParsing/SequenceParsing.cpp;${PROJECT_SOURCE_DIR}/SequenceParsing/SequenceParsing.h;${PROJECT_SOURCE_DIR}/SequenceParsing/tinydir/tinydir.h")
 
@@ -191,6 +193,12 @@ add_executable(compareDetections ${SRC_DIR}/compareDetections.c)
 
 target_link_libraries(compareDetections ${LIBRARIES} libdarknet)
 target_link_libraries(compareDetections ${LIBRARIES} autocam-serialization)
+
+add_executable(gtstats ${SRC_DIR}/groundtruthStats.c)
+
+target_link_libraries(gtstats ${LIBRARIES} libdarknet)
+target_link_libraries(gtstats ${LIBRARIES} autocam-serialization)
+
 
 add_definitions("-DYAML=YAML_AUTOCAM")
 
