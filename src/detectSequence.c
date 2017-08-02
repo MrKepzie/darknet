@@ -997,21 +997,12 @@ static void parseArguments(const std::list<string>& args,
     }
 
 
+    int defaultFirstFrame,defaultLastFrame;
     if (!isVideo) {
-        SequenceParsing::SequenceFromPattern::iterator startIt = inputSequence.find(*firstFrame);
-        SequenceParsing::SequenceFromPattern::iterator endIt = inputSequence.find(*lastFrame);
-        if (startIt == inputSequence.end() || endIt == inputSequence.end()) {
-            throw std::invalid_argument("Invalid frame range");
-        }
-        ++endIt;
-        for (SequenceParsing::SequenceFromPattern::iterator it = startIt; it != endIt; ++it) {
-            inputFilesInOrder->push_back(std::make_pair(it->second.begin()->second, it->first));
-        }
-        *numFrames = inputFilesInOrder->size();
+        defaultFirstFrame = inputSequence.begin()->first;
+        defaultLastFrame = inputSequence.rbegin()->first;
+        *numFrames = defaultLastFrame - defaultFirstFrame + 1;
 
-        if (inputFilesInOrder->empty()) {
-            throw std::invalid_argument("At least one frame must be detected");
-        }
     } else {
         *videoStream = cvCaptureFromFile(firstFrameFileName->c_str());
         if (!videoStream) {
@@ -1020,15 +1011,9 @@ static void parseArguments(const std::list<string>& args,
 
         *numFrames = cvGetCaptureProperty(*videoStream, CV_CAP_PROP_FRAME_COUNT);
 
-    }
-
-    int defaultFirstFrame,defaultLastFrame;
-    if (!isVideo) {
-        defaultFirstFrame = inputSequence.begin()->first;
-        defaultLastFrame = inputSequence.rbegin()->first;
-    } else {
         defaultFirstFrame = 1;
         defaultLastFrame = *numFrames - 1;
+
     }
     {
         std::list<string>::iterator foundInput = hasToken(localArgs, "--range");
@@ -1063,6 +1048,22 @@ static void parseArguments(const std::list<string>& args,
             }
         }
         
+    }
+    {
+        SequenceParsing::SequenceFromPattern::iterator startIt = inputSequence.find(*firstFrame);
+        SequenceParsing::SequenceFromPattern::iterator endIt = inputSequence.find(*lastFrame);
+        if (startIt == inputSequence.end() || endIt == inputSequence.end()) {
+            throw std::invalid_argument("Invalid frame range");
+        }
+        ++endIt;
+        for (SequenceParsing::SequenceFromPattern::iterator it = startIt; it != endIt; ++it) {
+            inputFilesInOrder->push_back(std::make_pair(it->second.begin()->second, it->first));
+        }
+        *numFrames = inputFilesInOrder->size();
+
+        if (inputFilesInOrder->empty()) {
+            throw std::invalid_argument("At least one frame must be detected");
+        }
     }
     {
         std::list<string>::iterator foundInput = hasToken(localArgs, "-o");
