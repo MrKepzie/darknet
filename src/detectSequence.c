@@ -149,6 +149,14 @@ void *detect_in_thread(void *ptr)
         roi = getHistogramWindowFromDetectionRect(roi);
 
         std::vector<double> histogramOut;
+
+        RectI imageBounds;
+        imageBounds.x1 = 0;
+        imageBounds.y1 = 0;
+        imageBounds.x2 = args->inputImage.w;
+        imageBounds.y2 = args->inputImage.h;
+
+        roi.intersect(imageBounds, &roi);
         computeHistograms(roi, args->inputImage, &histogramOut);
 
         const std::size_t dataSize = sizeof(double) * histogramOut.size();
