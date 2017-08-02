@@ -729,6 +729,17 @@ public:
 
 };
 
+template <typename RECT>
+inline RECT getHistogramWindowFromDetectionRect(const RECT& detectionRect)
+{
+    RECT r;
+    r.x1 = detectionRect.x1 + detectionRect.width() / 4.;
+    r.x2 = detectionRect.x1 + detectionRect.width() * 3. / 4.;
+    r.y1 = detectionRect.y2 - r.width() * 2.;
+    r.y2 = detectionRect.y2;
+    return r;
+}
+
 /**
  * @brief Computes H and S histograms for the given rectangle
  **/

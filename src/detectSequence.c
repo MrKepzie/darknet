@@ -146,6 +146,8 @@ void *detect_in_thread(void *ptr)
         roi.x2 = std::ceil(detection.x2);
         roi.y2 = std::ceil(detection.y2);
 
+        roi = getHistogramWindowFromDetectionRect(roi);
+
         std::vector<double> histogramOut;
         computeHistograms(roi, args->inputImage, &histogramOut);
 
