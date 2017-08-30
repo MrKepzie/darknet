@@ -1,5 +1,12 @@
 #include "detectorCommon.h"
 
+#include <boost/shared_ptr.hpp>
+#include <boost/lexical_cast.hpp>
+#include <boost/algorithm/string/trim.hpp>
+#include <boost/algorithm/string/split.hpp>
+#include <boost/algorithm/string/predicate.hpp>
+#include <boost/algorithm/string.hpp>
+
 using std::string;
 
 
@@ -31,6 +38,8 @@ struct DetectThreadArgs
     // Changes for each detection
     int frameNumber;
     image inputImage, inputImageScaled;
+    int offsetX, offsetY;
+    int formatW, formatH;
 
     // Whether to write the file in output or not
     bool writeOutput;
@@ -93,7 +102,7 @@ void *detect_in_thread(void *ptr)
     int imgHeight = args->inputImage.h;
 
 
-    SERIALIZATION_NAMESPACE::FrameSerialization frameSerialization;
+    SERIALIZATION_NAMESPACE::FrameSerialization &frameSerialization = args->outSeq->frames[args->frameNumber];
 
     for (int i = 0; i < gridSize; ++i) {
         int class1 = max_index(args->probs[i], nClasses);
@@ -133,18 +142,38 @@ void *detect_in_thread(void *ptr)
         detection.y2 = (b.y-b.h/2.) * imgHeight;
         detection.y2 = imgHeight - detection.y2;
 
-        // Clamp
-        detection.x1 = std::max(0.,std::min((double)imgWidth, detection.x1));
-        detection.y1 = std::max(0.,std::min((double)imgHeight, detection.y1));
-        detection.x2 = std::max(0.,std::min((double)imgWidth, detection.x2));
-        detection.y2 = std::max(0.,std::min((double)imgHeight, detection.y2));
-        
-#ifdef OPENCV
         RectI roi;
         roi.x1 = std::floor(detection.x1);
         roi.y1 = std::floor(detection.y1);
         roi.x2 = std::ceil(detection.x2);
         roi.y2 = std::ceil(detection.y2);
+
+        detection.x1 += args->offsetX;
+        detection.x2 += args->offsetX;
+        detection.y1 += args->offsetY;
+        detection.y2 += args->offsetY;
+
+        // Clamp
+        detection.x1 = std::max(0.,std::min((double)args->formatW, detection.x1));
+        detection.y1 = std::max(0.,std::min((double)args->formatH, detection.y1));
+        detection.x2 = std::max(0.,std::min((double)args->formatW, detection.x2));
+        detection.y2 = std::max(0.,std::min((double)args->formatH, detection.y2));
+        
+
+        // Check for duplicate
+        bool foundDuplicate = false;
+        for (std::list<SERIALIZATION_NAMESPACE::DetectionSerialization>::const_iterator it = frameSerialization.detections.begin(); it != frameSerialization.detections.end(); ++it) {
+            if (it->x1 == detection.x1 && it->x2 == detection.x2 && it->y1 == detection.y1 && it->y2 == detection.y2) {
+                foundDuplicate = true;
+                break;
+            }
+        }
+
+        if (foundDuplicate) {
+            continue;
+        }
+#ifdef OPENCV
+
 
         roi = getHistogramWindowFromDetectionRect(roi);
 
@@ -169,6 +198,7 @@ void *detect_in_thread(void *ptr)
 
         frameSerialization.detections.push_back(detection);
 
+
     }
 
     free_image(args->inputImage);
@@ -177,8 +207,10 @@ void *detect_in_thread(void *ptr)
     // No detection, do not write to the file
     if (frameSerialization.detections.empty()) {
         std::cerr << "No detection at frame " << args->frameNumber << std::endl;
-    } else {
-        args->outSeq->frames.insert(std::make_pair(args->frameNumber, frameSerialization));
+        std::map<int, SERIALIZATION_NAMESPACE::FrameSerialization>::iterator found = args->outSeq->frames.find(args->frameNumber);
+        if (found != args->outSeq->frames.end()) {
+            args->outSeq->frames.erase(found);
+        }
     }
 
 
@@ -235,7 +267,9 @@ static void parseArguments(const std::list<string>& args,
                            string* weightFilename,
                            float* thresh,
                            std::vector<string>* names,
-                           string* outputFilename)
+                           string* outputFilename,
+                           int *offsetX, int* offsetY,
+                           int *formatW, int* formatH)
 {
     std::list<string> localArgs = args;
 
@@ -423,6 +457,61 @@ static void parseArguments(const std::list<string>& args,
         }
     }
 
+    {
+        std::list<string>::iterator foundInput = hasToken(localArgs, "--offset");
+        if (foundInput == localArgs.end()) {
+            *offsetX = 0;
+            *offsetY = 0;
+        } else {
+            foundInput = localArgs.erase(foundInput);
+            if ( foundInput == localArgs.end() ) {
+                throw std::invalid_argument("--offset switch without an offset");
+            } else {
+                std::vector<string> rangeVec;
+                split(*foundInput, ',', &rangeVec);
+                if (rangeVec.size() != 2) {
+                    throw std::invalid_argument("offset must be in the form x,y");
+                }
+                {
+                    std::stringstream ss(rangeVec[0]);
+                    ss >> *offsetX;
+                }
+                {
+                    std::stringstream ss(rangeVec[1]);
+                    ss >> *offsetY;
+                }
+                localArgs.erase(foundInput);
+            }
+        }
+
+    }
+    {
+        std::list<string>::iterator foundInput = hasToken(localArgs, "-f");
+        if (foundInput == localArgs.end()) {
+            throw std::invalid_argument("Image format (e.g: 1920x1080) must be specified with the -f switch");
+        }
+        foundInput = localArgs.erase(foundInput);
+        if ( foundInput == localArgs.end() ) {
+            throw std::invalid_argument("-f switch without a format");
+        } else {
+            std::string formatStr = *foundInput;
+            std::vector<string> splits;
+            boost::split(splits, formatStr,boost::is_any_of("x"));
+            if (splits.size() != 2) {
+                throw std::invalid_argument("Format must be in the form \"widthxheight\"");
+            }
+            for (std::size_t i = 0; i < splits.size(); ++i) {
+                // Remove whitespaces
+                boost::trim(splits[i]);
+            }
+
+            *formatW = boost::lexical_cast<int>(splits[0]);
+            *formatH = boost::lexical_cast<int>(splits[1]);
+
+            localArgs.erase(foundInput);
+        }
+    }
+
 } // parseArguments
 
 struct CaptureHolder
@@ -462,7 +551,9 @@ int renderImageSequence_main(int argc, char** argv)
     float hier_thresh = .5;
     std::vector<string> allowedNames;
     allowedNames.push_back("person");
-    parseArguments(arguments, &inputFilesInOrder, &firstFrameFileName, &firstFrame, &lastFrame, &videoStream, &numFrames, &cfgFilename, &weightFilename, &thresh, &names, &outputFile);
+    int offsetX, offsetY;
+    int formatW,formatH;
+    parseArguments(arguments, &inputFilesInOrder, &firstFrameFileName, &firstFrame, &lastFrame, &videoStream, &numFrames, &cfgFilename, &weightFilename, &thresh, &names, &outputFile, &offsetX, &offsetY, &formatW, &formatH);
 
     CaptureHolder captureHolder(videoStream);
 
@@ -472,8 +563,22 @@ int renderImageSequence_main(int argc, char** argv)
 
     SERIALIZATION_NAMESPACE::SequenceSerialization detectionResults;
 
-    detectionResults.histogramSizes.push_back(HUE_HISTOGRAM_NUM_BINS);
-    detectionResults.histogramSizes.push_back(SAT_HISTOGRAM_NUM_BINS);
+    // If detection file already exists, append detections to it
+    {
+        FStreamsSupport::ifstream ifile;
+        FStreamsSupport::open(&ifile, outputFile);
+        if (ifile) {
+            SERIALIZATION_NAMESPACE::read(SERIALIZATION_FILE_FORMAT_HEADER, ifile, &detectionResults);
+            std::cout << "Found existing file: " << outputFile <<  ", detections will be appended to this file" << std::endl;
+        }
+    }
+
+    if (detectionResults.histogramSizes.empty()) {
+        detectionResults.histogramSizes.push_back(HUE_HISTOGRAM_NUM_BINS);
+        detectionResults.histogramSizes.push_back(SAT_HISTOGRAM_NUM_BINS);
+    } else {
+        assert(detectionResults.histogramSizes.size() == 2 && detectionResults.histogramSizes[0] == HUE_HISTOGRAM_NUM_BINS && detectionResults.histogramSizes[1] == HUE_HISTOGRAM_NUM_BINS);
+    }
 
 
     network net = parse_network_cfg(const_cast<char*>(cfgFilename.c_str()));
@@ -509,7 +614,7 @@ int renderImageSequence_main(int argc, char** argv)
         modelFileName += "_model";
         modelAbsoluteFileName = modelFileName;
 
-        // Remove path
+        // Remove pathuserWidth
         std::size_t foundSlash = modelFileName.find_last_of("/");
         if (foundLastDot != std::string::npos) {
             modelFileName = modelFileName.substr(foundSlash + 1);
@@ -526,11 +631,15 @@ int renderImageSequence_main(int argc, char** argv)
     detectArgs.predictions = predictions;
     detectArgs.probs = probs;
     detectArgs.avg = avg;
+    detectArgs.offsetX = offsetX;
+    detectArgs.offsetY = offsetY;
+    detectArgs.formatW = formatW;
+    detectArgs.formatH = formatH;
     detectArgs.boxes = boxes;
     detectArgs.thresh = thresh;
     detectArgs.hierThresh = hier_thresh;
     detectArgs.names = &names;
-    detectArgs.modelFileIndex = 0;
+    detectArgs.modelFileIndex = detectionResults.modelFiles.size();
     detectArgs.outSeq = &detectionResults;
     detectArgs.outputFilename = &outputFile;
     detectArgs.allowedClasses = &allowedNames;
