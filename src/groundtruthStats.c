@@ -12,16 +12,20 @@
 #define kDhKey "dh"
 #define kDxKey "dx"
 #define kDyKey "dy"
-#define kDHistChi2Key "dhist_chi2"
-#define kDModelChi2Key "dModel_chi2"
+//#define kDHistChi2Key "dhist_chi2"
+//#define kDModelChi2Key "dModel_chi2"
+#define kProba "proba"
+#define kDetectScore "detectScore"
 #define kTransitionCostKey "transitionCost"
 
 #define kSubTransitionDx "transition_dx"
 #define kSubTransitionDy "transition_dy"
 #define kSubTransitionDw "transition_dw"
 #define kSubTransitionDh "transition_dh"
-#define kSubTransitionDHistChi2 "transition_dHistChi2"
-#define kSubTransitionDModelChi2 "transition_dModelChi2"
+//#define kSubTransitionDHistChi2 "transition_dHistChi2"
+//#define kSubTransitionDModelChi2 "transition_dModelChi2"
+#define kSubTransitionDProba "transition_proba"
+#define kSubTransitionDScore "transition_detectionScore"
 
 #define kCategoryNameSameActor "SameActor"
 #define kCategoryDifferentActors "DifferentActors"
@@ -180,9 +184,11 @@ static void parseArguments(const std::list<string>& args,
 } // parseArguments
 
 static void compareDetections(const SERIALIZATION_NAMESPACE::DetectionSerialization& a, const SERIALIZATION_NAMESPACE::DetectionSerialization& b,
+#ifndef AUTOCAM_DETECTIONS_USE_OPEN_POSE
                               const std::vector<boost::shared_ptr<FStreamsSupport::ifstream> >& modelFiles,
                               const std::vector<double>& histogramA,
                               const std::vector<double>& histogramB,
+#endif
                               int width, int height,
                               SampleData* data)
 {
@@ -193,16 +199,18 @@ static void compareDetections(const SERIALIZATION_NAMESPACE::DetectionSerializat
     data->values[kDhKey] = std::abs(aRect.height() - bRect.height()) / (double)height;
     data->values[kDxKey] = std::abs((aRect.x1 + aRect.x2) / 2. -  (bRect.x1 + bRect.x2) / 2.) / (double)width;
     data->values[kDyKey] = std::abs((aRect.y1 + aRect.y2) / 2. -  (bRect.y1 + bRect.y2) / 2.) / (double)height;
+#ifndef AUTOCAM_DETECTIONS_USE_OPEN_POSE
     data->values[kDHistChi2Key] = compareHist(histogramA, histogramB, eHistogramComparisonChiSquare);
+#endif
 }
-
+#ifndef AUTOCAM_DETECTIONS_USE_OPEN_POSE
 struct ActorModel
 {
     std::vector<double> histogram;
 };
 
 typedef std::map<std::string, ActorModel> PerActorModel;
-
+#endif
 static void computeData(const string& inputFilename, const string& outputFilename, const std::vector<int>& frameOffsets, int width, int height, const std::map<std::string,int>& actorsModelFrame, PerActorStatDataMap& data) {
 
     assert(!frameOffsets.empty());
@@ -225,7 +233,7 @@ static void computeData(const string& inputFilename, const string& outputFilenam
         SERIALIZATION_NAMESPACE::read(SERIALIZATION_FILE_FORMAT_HEADER, ifile, &detectionResults);
     }
 
-
+#ifndef AUTOCAM_DETECTIONS_USE_OPEN_POSE
 
     std::vector<boost::shared_ptr<FStreamsSupport::ifstream> > modelFiles;
 
@@ -240,13 +248,15 @@ static void computeData(const string& inputFilename, const string& outputFilenam
         modelFiles.push_back(ifile);
     }
 
-    PerActorModel actorsModel;
 
+    PerActorModel actorsModel;
+#endif
     {
         for (std::map<int, SERIALIZATION_NAMESPACE::FrameSerialization>::const_iterator it = detectionResults.frames.begin(); it != detectionResults.frames.end(); ++it) {
 
             for (std::list<SERIALIZATION_NAMESPACE::DetectionSerialization>::const_iterator it2 = it->second.detections.begin(); it2 != it->second.detections.end(); ++it2) {
 
+#ifndef AUTOCAM_DETECTIONS_USE_OPEN_POSE
                 std::vector<double> histogramA;
                 assert(it2->fileIndex < (int)modelFiles.size());
                 loadHistogramFromFile(modelFiles[it2->fileIndex], it2->modelIndex, detectionResults.histogramSizes, &histogramA);
@@ -275,7 +285,7 @@ static void computeData(const string& inputFilename, const string& outputFilenam
                         }
                     }
                 }
-
+#endif
 
 
                 for (std::vector<int>::const_iterator itoff = frameOffsets.begin(); itoff != frameOffsets.end(); ++itoff) {
@@ -310,18 +320,43 @@ static void computeData(const string& inputFilename, const string& outputFilenam
                             continue;
                         }
 
+#ifndef AUTOCAM_DETECTIONS_USE_OPEN_POSE
                         std::vector<double> histogramB;
                         assert(it3->fileIndex < (int)modelFiles.size());
                         loadHistogramFromFile(modelFiles[it3->fileIndex], it3->modelIndex, detectionResults.histogramSizes, &histogramB);
-
+#endif
 
 
                         ActorToActorData& actorsData = data[key];
 
                         SampleData statistics;
+#ifndef AUTOCAM_DETECTIONS_USE_OPEN_POSE
                         double distToModel = compareHist(histogramB, model.histogram, eHistogramComparisonChiSquare);
                         statistics.values[kDModelChi2Key] = distToModel;
-                        compareDetections(*it2, *it3, modelFiles, histogramA, histogramB, width, height, &statistics);
+#else
+                        if (sameActor) {
+                            // If this is the same actor, push the proba of the actor, otherwise average the proba of other actors
+                            statistics.values[kProba] = it3->probabilities[0]; // -std::log(it3->probabilities[0]) / M_LN2; << already done by natron when tracking
+                        } else {
+                            double p = 0.;
+                            for (std::size_t i = 1; i < it3->probabilities.size(); ++i) {
+                                p += it3->probabilities[i];
+                            }
+                            if (it3->probabilities.size() - 1 > 0) {
+                                p /= (it3->probabilities.size() - 1);
+                                statistics.values[kProba] = p;
+                            } else {
+                                statistics.values[kProba] = 1.;
+                            }
+
+                        }
+                        statistics.values[kDetectScore] = it3->score; // -std::log(it3->score) / M_LN2;
+#endif
+                        compareDetections(*it2, *it3,
+#ifndef AUTOCAM_DETECTIONS_USE_OPEN_POSE
+                                          modelFiles, histogramA, histogramB,
+#endif
+                                          width, height, &statistics);
                         actorsData.samples.push_back(statistics);
                     }
 
@@ -439,16 +474,26 @@ int produceStatsMain(int argc, char** argv)
     double sdevY = sameActorFrameOffset1Data->results[kDyKey].statStdev * height;
     double sdevW = sameActorFrameOffset1Data->results[kDwKey].statStdev * width;
     double sdevH = sameActorFrameOffset1Data->results[kDhKey].statStdev * height;
+#ifndef AUTOCAM_DETECTIONS_USE_OPEN_POSE
     double sdevHisto = sameActorFrameOffset1Data->results[kDHistChi2Key].statStdev;
     double sdevModel = sameActorFrameOffset1Data->results[kDModelChi2Key].statStdev;
+#else
+    double sdevDetectionScore = sameActorFrameOffset1Data->results[kDetectScore].statStdev;
+    double sdevProba = sameActorFrameOffset1Data->results[kProba].statStdev;
+#endif
 
     std::vector<std::string> statsToCompute;
     statsToCompute.push_back(kSubTransitionDx);
     statsToCompute.push_back(kSubTransitionDy);
     statsToCompute.push_back(kSubTransitionDw);
     statsToCompute.push_back(kSubTransitionDh);
+#ifndef AUTOCAM_DETECTIONS_USE_OPEN_POSE
     statsToCompute.push_back(kSubTransitionDHistChi2);
     statsToCompute.push_back(kSubTransitionDModelChi2);
+#else
+    statsToCompute.push_back(kSubTransitionDProba);
+    statsToCompute.push_back(kSubTransitionDScore);
+#endif
     statsToCompute.push_back(kTransitionCostKey);
 
     for (PerActorStatDataMap::iterator it = data.begin(); it != data.end(); ++it) {
@@ -462,26 +507,36 @@ int produceStatsMain(int argc, char** argv)
             double dy = it2->values[kDyKey] * height;
             double dw = it2->values[kDwKey] * width;
             double dh = it2->values[kDhKey] * height;
+#ifndef AUTOCAM_DETECTIONS_USE_OPEN_POSE
             double dhistChi2 = it2->values[kDHistChi2Key];
             double dModelChi2 = it2->values[kDModelChi2Key];
-
+#else
+            double detectScore = it2->values[kDetectScore];
+            double proba = it2->values[kProba];
+#endif
             double xS = mahalanobisValue(dx, sdevX);
             double yS = mahalanobisValue(dy, sdevY);
-            double wS = mahalanobisValue(dw, sdevW);
-            double hS = mahalanobisValue(dh, sdevH);
+            double wS = mahalanobisValue(dw, sdevW) / 10.;
+            double hS = mahalanobisValue(dh, sdevH) / 10.;
 
+#ifndef AUTOCAM_DETECTIONS_USE_OPEN_POSE
             double cost = xS + yS + wS + hS + dhistChi2 / sdevHisto + dModelChi2 / sdevModel;
-            if (cost >= 56) {
-                assert(true);
-            }
+#else
+            double cost = xS + yS + wS + hS  + detectScore / sdevDetectionScore + proba / sdevProba;
+#endif
 
             it2->values[kTransitionCostKey] = cost;
             it2->values[kSubTransitionDx] = xS;
             it2->values[kSubTransitionDy] = yS;
             it2->values[kSubTransitionDw] = wS;
             it2->values[kSubTransitionDh] = hS;
+#ifndef AUTOCAM_DETECTIONS_USE_OPEN_POSE
             it2->values[kSubTransitionDHistChi2] = dhistChi2 / sdevHisto;
             it2->values[kSubTransitionDModelChi2] = dModelChi2 / sdevModel;
+#else
+            it2->values[kSubTransitionDProba] = proba / sdevProba;
+            it2->values[kSubTransitionDScore] = detectScore / sdevDetectionScore;
+#endif
 
             for (std::vector<std::string>::const_iterator it3 = statsToCompute.begin(); it3 != statsToCompute.end(); ++it3) {
                 StatResults& costStats = it->second.results[*it3];

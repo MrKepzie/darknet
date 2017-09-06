@@ -16,15 +16,27 @@ DetectionSerialization::encode(YAML::Emitter& em) const
     em << YAML::Flow << YAML::BeginMap;
     em << YAML::Key << "Rect" << YAML::Value << YAML::Flow << YAML::BeginSeq << x1 << y1 << x2 << y2 << YAML::EndSeq;
     em << YAML::Key << "Score" << YAML::Value << score;
-    em << YAML::Key << "Label" << YAML::Value << label;
+    if (!label.empty()) {
+        em << YAML::Key << "Label" << YAML::Value << label;
+    }
     if (!uiLabel.empty()) {
         em << YAML::Key << "UILabel" << YAML::Value << uiLabel;
     }
+#ifndef AUTOCAM_DETECTIONS_USE_OPEN_POSE
+
 
     if (fileIndex != -1) {
         em << YAML::Key << "ModelFile" << YAML::Value << fileIndex;
         em << YAML::Key << "ModelIndex" << YAML::Value << modelIndex;
     }
+#else
+    em << YAML::Key << "ActorProb" << YAML::Value << YAML::Flow << YAML::BeginSeq;
+    for (std::size_t i = 0; i < probabilities.size(); ++i) {
+        em << probabilities[i];
+    }
+    em << YAML::EndSeq;
+
+#endif
     em << YAML::EndMap;
 }
 
@@ -45,14 +57,28 @@ DetectionSerialization::decode(const YAML::Node& node)
 
     score = node["Score"].as<double>();
 
-    label = node["Label"].as<std::string>();
+    if (node["Label"]) {
+        label = node["Label"].as<std::string>();
+    }
     if (node["UILabel"]) {
         uiLabel = node["UILabel"].as<std::string>();
     }
+
+#ifndef AUTOCAM_DETECTIONS_USE_OPEN_POSE
     if (node["ModelFile"]) {
         fileIndex = node["ModelFile"].as<int>();
         modelIndex = node["ModelIndex"].as<std::size_t>();
     }
+#else
+    YAML::Node probaNode = node["ActorProb"];
+    if (!rectNode.IsSequence()) {
+        throw YAML::InvalidNode();
+    }
+    probabilities.resize(probaNode.size());
+    for (std::size_t i = 0; i < probaNode.size(); ++i) {
+        probabilities[i] = probaNode[i].as<double>();
+    }
+#endif
 
 }
 
@@ -91,7 +117,7 @@ SequenceSerialization::encode(YAML::Emitter& em) const
 
     em << YAML::BeginMap;
 
-
+#ifndef AUTOCAM_DETECTIONS_USE_OPEN_POSE
     if (!histogramSizes.empty()) {
         em << YAML::Key << "HistSizes" << YAML::Value << YAML::BeginSeq;
         for (std::size_t i = 0; i < histogramSizes.size(); ++i) {
@@ -109,6 +135,16 @@ SequenceSerialization::encode(YAML::Emitter& em) const
 
         em << YAML::EndSeq;
     }
+#else
+    if (!actorsDetectionIndex.empty()) {
+        em << YAML::Key << "RefFrame" << YAML::Value << referenceFrame;
+        em << YAML::Key << "RefDetectionIndices" << YAML::Value << YAML::Flow << YAML::BeginSeq;
+        for (std::size_t i = 0; i < actorsDetectionIndex.size(); ++i) {
+            em << actorsDetectionIndex[i];
+        }
+        em << YAML::EndSeq;
+    }
+#endif
 
     em << YAML::Key << "Frames" << YAML::Value;
     em << YAML::BeginMap;
@@ -129,6 +165,7 @@ SequenceSerialization::decode(const YAML::Node& node)
     if (!node.IsMap()) {
         throw YAML::InvalidNode();
     }
+#ifndef AUTOCAM_DETECTIONS_USE_OPEN_POSE
     if (node["HistSizes"]) {
         YAML::Node histSizeNode = node["HistSizes"];
         histogramSizes.resize(histSizeNode.size());
@@ -144,6 +181,19 @@ SequenceSerialization::decode(const YAML::Node& node)
             modelFiles[i] = filesNode[i].as<std::string>();
         }
     }
+#else
+    if (node["RefFrame"]) {
+        referenceFrame = node["RefFrame"].as<double>();
+        YAML::Node detectionIndicesNode = node["RefDetectionIndices"];
+        if (!detectionIndicesNode.IsSequence()) {
+            throw YAML::InvalidNode();
+        }
+        actorsDetectionIndex.resize(detectionIndicesNode.size());
+        for (std::size_t i = 0; i < detectionIndicesNode.size(); ++i) {
+            actorsDetectionIndex[i] = detectionIndicesNode[i].as<int>();
+        }
+    }
+#endif
 
     YAML::Node framesNode = node["Frames"];
     if (framesNode) {
@@ -153,7 +203,7 @@ SequenceSerialization::decode(const YAML::Node& node)
             s.decode(it->second);
         }
     }
-
+    
 }
 
 SERIALIZATION_NAMESPACE_EXIT;

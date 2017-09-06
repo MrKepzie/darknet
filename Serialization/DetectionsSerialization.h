@@ -13,9 +13,12 @@
 #include "SerializationBase.h"
 
 
-SERIALIZATION_NAMESPACE_ENTER;
+#define AUTOCAM_DETECTIONS_USE_OPEN_POSE
 
 #define SERIALIZATION_FILE_FORMAT_HEADER "# Detections"
+
+SERIALIZATION_NAMESPACE_ENTER;
+
 
 class DetectionSerialization : public SerializationObjectBase
 {
@@ -36,11 +39,16 @@ public:
     // the identifier. If unset, this will be assumed to be the identifier.
     std::string uiLabel;
 
+#ifdef AUTOCAM_DETECTIONS_USE_OPEN_POSE
+    std::vector<double> probabilities;
+#else
+
     // The index of the file in which the model for this detection is (in modelFiles)
     int fileIndex;
 
     // The file offset (to be multiplied by histogramSizes) at which the model data for this detection starts
     std::size_t modelIndex;
+#endif
 
 public:
 
@@ -50,10 +58,12 @@ public:
     , x2(0)
     , y2(0)
     , score(0)
+#ifndef AUTOCAM_DETECTIONS_USE_OPEN_POSE
     , label()
     , uiLabel()
     , fileIndex(-1)
     , modelIndex(0)
+#endif
     {
 
     }
@@ -91,23 +101,30 @@ public:
     virtual void decode(const YAML::Node& node);
 };
 
+
+
 class SequenceSerialization : public SerializationObjectBase
 {
 public:
 
+
     std::map<int, FrameSerialization> frames;
 
+#ifndef AUTOCAM_DETECTIONS_USE_OPEN_POSE
     // Hue and saturation histogram of the image for the detection rectangle
     std::vector<int> histogramSizes;
 
     // The filenames of the model files: they are relative to the actual detection file
     std::vector<std::string> modelFiles;
+#else
+    // The frame at which all actors were identified from the tracklets
+    int referenceFrame;
 
+    // The index for each actor of the corresponding detection at the reference frame
+    std::vector<int> actorsDetectionIndex;
+#endif
 
     SequenceSerialization()
-    : frames()
-    , histogramSizes()
-    , modelFiles()
     {
 
     }
@@ -118,7 +135,7 @@ public:
     }
 
     virtual void encode(YAML::Emitter& em) const;
-
+    
     virtual void decode(const YAML::Node& node);
 };
 

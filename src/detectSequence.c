@@ -154,9 +154,12 @@ void *detect_in_thread(void *ptr)
         const std::size_t dataSize = sizeof(double) * histogramOut.size();
         args->modelFile->write((const char*)&histogramOut[0], dataSize);
 
+#ifndef AUTOCAM_DETECTIONS_USE_OPEN_POSE
         detection.modelIndex = args->modelIndexInFile;
         ++args->modelIndexInFile;
         detection.fileIndex = args->modelFileIndex;
+#endif
+
 #endif
 
         frameSerialization.detections.push_back(detection);
@@ -463,10 +466,10 @@ int renderImageSequence_main(int argc, char** argv)
 
 
     SERIALIZATION_NAMESPACE::SequenceSerialization detectionResults;
-
+#ifndef AUTOCAM_DETECTIONS_USE_OPEN_POSE
     detectionResults.histogramSizes.push_back(HUE_HISTOGRAM_NUM_BINS);
     detectionResults.histogramSizes.push_back(SAT_HISTOGRAM_NUM_BINS);
-
+#endif
 
     network net = parse_network_cfg(const_cast<char*>(cfgFilename.c_str()));
     load_weights(&net, const_cast<char*>(weightFilename.c_str()));
@@ -552,7 +555,7 @@ int renderImageSequence_main(int argc, char** argv)
                 break;
             }
         }
-
+#ifndef AUTOCAM_DETECTIONS_USE_OPEN_POSE
         if (!modelFile.get() || detectArgs.modelIndexInFile >= MAX_NUM_MODELS_PER_FILE) {
             if (modelFile.get()) {
                 modelFile->flush();
@@ -583,7 +586,7 @@ int renderImageSequence_main(int argc, char** argv)
             detectionResults.modelFiles.push_back(actualRelativeFileName);
             detectArgs.modelFile = modelFile.get();
         }
-
+#endif
         // Write if we reach the last one
         detectArgs.writeOutput = (curFrame_i == numFrames - 1 || curFrame_i == lastFrame - 1);
         detectArgs.frameNumber = frameNumber;

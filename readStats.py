@@ -68,7 +68,7 @@ def readAndPlot(data, diffActorsStats, labelPrefix, filePath):
     nSamples = data['NSamples']
     stats = data['Stats']
 
-    generateLut = labelPrefix != 'DifferentActors';
+    generateLut = False #labelPrefix != 'DifferentActors';
 
     for name, results in stats.iteritems():
 
